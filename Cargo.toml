@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 duktape-sys = { path = "./duktape-sys" }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
