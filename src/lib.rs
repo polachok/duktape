@@ -41,9 +41,18 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn stack_len(&self) -> i32 {
+        unsafe { duktape_sys::duk_get_top(self.inner) }
+    }
+
     pub fn push<T: serde::Serialize>(&mut self, value: &T) {
         let mut serializer = serialize::DuktapeSerializer::from_ctx(self);
         value.serialize(&mut serializer).unwrap();
+    }
+
+    pub fn peek<'de, T: serde::de::Deserialize<'de>>(&mut self, idx: i32) -> T {
+        let mut deserializer = serialize::DuktapeDeserializer::from_ctx(self, idx);
+        T::deserialize(&mut deserializer).unwrap()
     }
 
     pub fn put_prop_index(
@@ -134,7 +143,7 @@ impl Context {
         unsafe { duktape_sys::duk_call(self.inner, n_args) }
     }
 
-    pub fn get_str(&mut self, value: &str) -> bool {
+    pub fn get_global_str(&mut self, value: &str) -> bool {
         let val = unsafe {
             duktape_sys::duk_get_global_lstring(
                 self.inner,
@@ -143,6 +152,50 @@ impl Context {
             )
         };
         val > 0
+    }
+
+    pub fn get_bool(&mut self, idx: duktape_sys::duk_idx_t) -> bool {
+        unsafe { duktape_sys::duk_require_boolean(self.inner, idx) > 0 }
+    }
+
+    pub fn get_uint(&mut self, idx: duktape_sys::duk_idx_t) -> u32 {
+        unsafe { duktape_sys::duk_require_uint(self.inner, idx) }
+    }
+
+    pub fn get_int(&mut self, idx: duktape_sys::duk_idx_t) -> i32 {
+        unsafe { duktape_sys::duk_require_int(self.inner, idx) }
+    }
+
+    pub fn get_number(&mut self, idx: duktape_sys::duk_idx_t) -> f64 {
+        unsafe { duktape_sys::duk_require_number(self.inner, idx) }
+    }
+
+    pub fn get_null(&mut self, idx: duktape_sys::duk_idx_t) {
+        unsafe { duktape_sys::duk_require_null(self.inner, idx) }
+    }
+
+    pub fn get_string(&mut self, idx: duktape_sys::duk_idx_t) -> String {
+        let mut len = 0;
+        let ptr =
+            unsafe { duktape_sys::duk_require_lstring(self.inner, idx, &mut len) } as *const u8;
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
+        let s = std::str::from_utf8(slice).unwrap();
+        s.to_owned()
+    }
+
+    pub fn get_object(&mut self, idx: duktape_sys::duk_idx_t) {
+        unsafe { duktape_sys::duk_require_object(self.inner, idx) }
+    }
+
+    pub fn get_prop(&mut self, name: &str, idx: duktape_sys::duk_idx_t) -> bool {
+        unsafe {
+            duktape_sys::duk_get_prop_lstring(
+                self.inner,
+                idx,
+                name.as_ptr() as *const i8,
+                name.len() as u64,
+            ) > 0
+        }
     }
 
     /*
@@ -290,7 +343,7 @@ mod tests {
         //ctx.push_number(1.0);
         let _func_idx = push_function!(ctx, print, -1);
         //ctx.dup(func_idx);
-        ctx.get_str("print");
+        ctx.get_global_str("print");
         //ctx.push_string(t);
         ctx.push(&t);
         ctx.call(1);

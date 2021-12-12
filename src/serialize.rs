@@ -1,5 +1,5 @@
 use super::Context;
-use serde::{ser, Serialize, Serializer};
+use serde::{de::Visitor, ser, Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 pub struct DuktapeSerializer<'ctx> {
@@ -37,6 +37,12 @@ impl Error {
 type Result<T> = std::result::Result<T, Error>;
 
 impl serde::ser::Error for Error {
+    fn custom<T: std::fmt::Display>(msg: T) -> Self {
+        Error::Message(msg.to_string())
+    }
+}
+
+impl serde::de::Error for Error {
     fn custom<T: std::fmt::Display>(msg: T) -> Self {
         Error::Message(msg.to_string())
     }
@@ -382,4 +388,337 @@ impl<'a, 'ctx> ser::SerializeStructVariant for &'a mut DuktapeSerializer<'ctx> {
     fn end(self) -> Result<()> {
         Ok(())
     }
+}
+
+pub struct DuktapeDeserializer<'ctx> {
+    inner: &'ctx mut Context,
+    stack_idx: i32,
+}
+
+impl<'ctx> DuktapeDeserializer<'ctx> {
+    pub fn from_ctx(ctx: &'ctx mut Context, stack_idx: i32) -> Self {
+        DuktapeDeserializer {
+            inner: ctx,
+            stack_idx,
+        }
+    }
+}
+
+impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
+    type Error = Error;
+
+    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_bool(self.stack_idx);
+        visitor.visit_bool(val)
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_int(self.stack_idx);
+        visitor.visit_i8(val as i8)
+    }
+
+    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_int(self.stack_idx);
+        visitor.visit_i16(val as i16)
+    }
+
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_int(self.stack_idx);
+        visitor.visit_i32(val)
+    }
+
+    fn deserialize_i64<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_uint(self.stack_idx);
+        visitor.visit_u8(val as u8)
+    }
+
+    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_uint(self.stack_idx);
+        visitor.visit_u16(val as u16)
+    }
+
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_uint(self.stack_idx);
+        visitor.visit_u32(val)
+    }
+
+    fn deserialize_u64<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_number(self.stack_idx);
+        visitor.visit_f32(val as f32)
+    }
+
+    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_number(self.stack_idx);
+        visitor.visit_f64(val)
+    }
+
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_string(self.stack_idx);
+        if val.len() == 1 {
+            visitor.visit_char(val.chars().next().unwrap())
+        } else {
+            todo!()
+        }
+    }
+
+    // we can't have borrowed strings
+    fn deserialize_str<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let val = self.inner.get_string(self.stack_idx);
+        visitor.visit_string(val)
+    }
+
+    // The `Serializer` implementation on the previous page serialized byte
+    // arrays as JSON arrays of bytes. Handle that representation here.
+    fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        todo!("figure out how to check for null")
+    }
+
+    // In Serde, unit means an anonymous value containing no data.
+    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let _val = self.inner.get_null(self.stack_idx);
+        visitor.visit_unit()
+    }
+
+    fn deserialize_unit_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        let _val = self.inner.get_null(self.stack_idx);
+        visitor.visit_unit()
+    }
+
+    fn deserialize_newtype_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_newtype_struct(self)
+    }
+
+    fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        _name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.inner.get_object(self.stack_idx);
+        let des = DuktapeStructDeserializer {
+            ctx: self.inner,
+            fields,
+            idx: 0,
+            obj_idx: self.stack_idx,
+        };
+        let res = visitor.visit_seq(des)?;
+        self.inner.pop();
+        Ok(res)
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+
+    // An identifier in Serde is the type that identifies a field of a struct or
+    // the variant of an enum. In JSON, struct fields and enum variants are
+    // represented as strings. In other formats they may be represented as
+    // numeric indices.
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_str(visitor)
+    }
+
+    // Like `deserialize_any` but indicates to the `Deserializer` that it makes
+    // no difference which `Visitor` method is called because the data is
+    // ignored.
+    //
+    // Some deserializers are able to implement this more efficiently than
+    // `deserialize_any`, for example by rapidly skipping over matched
+    // delimiters without paying close attention to the data in between.
+    //
+    // Some formats are not able to implement this at all. Formats that can
+    // implement `deserialize_any` and `deserialize_ignored_any` are known as
+    // self-describing.
+    fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        Err(Error::unsupported())
+    }
+}
+
+struct DuktapeStructDeserializer<'ctx> {
+    ctx: &'ctx mut Context,
+    fields: &'static [&'static str],
+    idx: usize,
+    obj_idx: i32,
+}
+
+impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeStructDeserializer<'ctx> {
+    type Error = Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+    where
+        T: serde::de::DeserializeSeed<'de>,
+    {
+        if let Some(prop_name) = self.fields.get(self.idx) {
+            if !self.ctx.get_prop(prop_name, 0) {
+                return Err(Error::Message("incorrect field".to_string()));
+            }
+            let mut deserializer = DuktapeDeserializer::from_ctx(&mut *self.ctx, -1);
+            let val = seed.deserialize(&mut deserializer)?;
+            self.idx += 1;
+            self.ctx.pop();
+            return Ok(Some(val));
+        }
+        Ok(None)
+    }
+}
+
+#[test]
+fn deserialize_num() {
+    let mut ctx = super::Context::default();
+    ctx.push(&42.0f64);
+    assert_eq!(ctx.peek::<f64>(-1), 42.0f64);
+}
+
+#[test]
+fn deserialize_obj() {
+    let mut ctx = super::Context::default();
+    #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+    struct T {
+        hello: String,
+        num: u32,
+    }
+    let t1 = T {
+        hello: "world".to_string(),
+        num: 42,
+    };
+    ctx.push(&t1);
+    let t2 = ctx.peek::<T>(0);
+    assert_eq!(t1, t2);
 }
