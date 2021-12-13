@@ -1,6 +1,23 @@
 use std::ffi::CStr;
+use thiserror::Error;
+
+use duktape_macros::duktape;
 
 mod serialize;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("{}", .0)]
+    Message(String),
+}
+
+type CFunction = unsafe extern "C" fn(*mut duktape_sys::duk_context) -> i32;
+
+pub trait Function {
+    const ARGS: i32;
+
+    fn ptr(&self) -> CFunction;
+}
 
 macro_rules! declare_function(
     ($name: ident, $args: literal, $e: expr) => {
@@ -24,23 +41,20 @@ macro_rules! push_function(
     }
 );
 
-pub enum ArgCount {
-    Exact(i32),
-    Variable,
-}
-
-pub trait Function: Sized + 'static {
-    const ARGS: ArgCount;
-
-    fn call(ctx: &mut Context) -> i32;
-}
-
 #[repr(transparent)]
 pub struct Context {
     inner: *mut duktape_sys::duk_context,
 }
 
 impl Context {
+    pub unsafe fn from_raw(ctx: *mut duktape_sys::duk_context) -> Self {
+        Context { inner: ctx }
+    }
+
+    pub fn as_raw(&mut self) -> *mut duktape_sys::duk_context {
+        self.inner
+    }
+
     pub fn stack_len(&self) -> i32 {
         unsafe { duktape_sys::duk_get_top(self.inner) }
     }
@@ -50,9 +64,31 @@ impl Context {
         value.serialize(&mut serializer).unwrap();
     }
 
-    pub fn peek<'de, T: serde::de::Deserialize<'de>>(&mut self, idx: i32) -> T {
+    pub fn push_function<F: Function>(&mut self, f: F) {
+        unsafe { duktape_sys::duk_push_c_function(self.inner, Some(f.ptr()), F::ARGS) };
+    }
+
+    pub fn call_function<F: Function>(&mut self, f: F) -> Result<(), Error> {
+        let rv = unsafe { f.ptr()(self.inner) };
+        if rv < 0 {
+            return Err(Error::Message("function failed".to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn peek<T: serde::de::Deserialize<'static>>(&mut self, idx: i32) -> T {
         let mut deserializer = serialize::DuktapeDeserializer::from_ctx(self, idx);
         T::deserialize(&mut deserializer).unwrap()
+    }
+
+    pub fn put_global_string(&mut self, value: &str) {
+        unsafe {
+            duktape_sys::duk_put_global_lstring(
+                self.inner,
+                value.as_ptr() as *const i8,
+                value.len() as u64,
+            );
+        }
     }
 
     pub fn put_prop_index(
@@ -115,23 +151,46 @@ impl Context {
         }
     }
 
-    pub fn eval(&mut self, value: &str) {
+    pub fn eval<T: serde::Deserialize<'static>>(&mut self, value: &str) -> Result<T, Error> {
         const DUK_COMPILE_EVAL: u32 = 1 << 3;
+        const DUK_COMPILE_SAFE: u32 = 1 << 7;
         const DUK_COMPILE_NOSOURCE: u32 = 1 << 9;
         const DUK_COMPILE_NOFILENAME: u32 = 1 << 11;
-        unsafe {
+
+        let rv = unsafe {
             duktape_sys::duk_eval_raw(
                 self.inner,
                 value.as_ptr() as *const i8,
                 value.len() as u64,
-                DUK_COMPILE_EVAL | DUK_COMPILE_NOSOURCE | DUK_COMPILE_NOFILENAME,
+                DUK_COMPILE_EVAL | DUK_COMPILE_NOSOURCE | DUK_COMPILE_NOFILENAME | DUK_COMPILE_SAFE,
             )
         };
+        if rv != 0 {
+            let mut len = 0;
+            let ptr = unsafe { duktape_sys::duk_safe_to_lstring(self.inner, -1, &mut len) };
+            let slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
+            let str = std::str::from_utf8(slice).unwrap();
+            return Err(Error::Message(str.to_owned()));
+        } else {
+            Ok(self.peek(-1))
+        }
     }
 
     pub fn pop(&mut self) {
         unsafe {
             duktape_sys::duk_pop(self.inner);
+        }
+    }
+
+    pub fn pop_value<T: serde::de::Deserialize<'static>>(&mut self) -> T {
+        let value = self.peek(-1);
+        self.pop();
+        value
+    }
+
+    pub fn pop_n(&mut self, n: i32) {
+        unsafe {
+            duktape_sys::duk_pop_n(self.inner, n);
         }
     }
 
@@ -230,6 +289,7 @@ impl Drop for Context {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn c_stuff() {
         extern "C" fn fatal(_udata: *mut std::ffi::c_void, msg: *const i8) {

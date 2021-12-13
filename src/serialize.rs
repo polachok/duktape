@@ -135,7 +135,7 @@ impl<'a, 'ctx> Serializer for &'a mut DuktapeSerializer<'ctx> {
     }
 
     fn serialize_unit(self) -> Result<Self::Ok> {
-        self.ctx.push_null();
+        //self.ctx.push_null();
         Ok(())
     }
 
@@ -556,7 +556,7 @@ impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
     where
         V: Visitor<'de>,
     {
-        let _val = self.inner.get_null(self.stack_idx);
+        //let _val = self.inner.get_null(self.stack_idx);
         visitor.visit_unit()
     }
 

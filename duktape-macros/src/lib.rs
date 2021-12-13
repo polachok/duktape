@@ -1,13 +1,17 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use syn::{parse_macro_input, Ident, ItemFn};
+use syn::{Ident, ItemFn};
 
 #[proc_macro_attribute]
 pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
     let parsed: ItemFn = syn::parse_macro_input!(input);
     let mut args = Vec::new();
     let fn_name = parsed.sig.ident.clone();
+    let struct_name = Ident::new(
+        &inflections::case::to_pascal_case(&fn_name.to_string()),
+        Span::call_site(),
+    );
     let (return_count, return_type) = match &parsed.sig.output {
         syn::ReturnType::Default => (0, None),
         syn::ReturnType::Type(_, typ) => {
@@ -25,7 +29,7 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
                 syn::Type::Path(path) => {
                     args.push(path.path.get_ident().unwrap().clone());
                 }
-                syn::Type::Reference(re) => {
+                syn::Type::Reference(_re) => {
                     if i > 0 {
                         panic!("unsupported reference");
                     }
@@ -35,6 +39,7 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
     let args_count = args.len() as i32;
+    let raw_args_count = (args_count - 1).max(0);
 
     let args_names: Vec<_> = args
         .iter()
@@ -46,42 +51,50 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
         .iter()
         .zip(args_names.iter())
         .enumerate()
-        .map(|(i, (typ, name))| match typ.to_string().as_str() {
-            "u32" => {
-                quote!(
-                    let #name = duktape_sys::duk_get_int(ctx,  -(1 + #i as i32)) as #typ;
-                )
-            }
-            _ => todo!(),
+        .map(|(i, (typ, name))| {
+            quote!(
+                let #name = ctx.peek::<#typ>(-(1 + #i as i32));
+            )
         })
         .collect();
     let push_result = match return_type {
-        Some(typ) => match typ.to_string().as_str() {
-            "u32" => {
-                quote!(
-                    duktape_sys::duk_push_uint(ctx, result);
-                )
-            }
-            _ => todo!(),
-        },
+        Some(_) => {
+            quote!(
+                ctx.push(&result);
+            )
+        }
         None => quote!(),
     };
 
     let res = quote!(
-        unsafe extern "C" fn #fn_name(ctx: *mut duktape_sys::duk_context) -> i32 {
-            #parsed
-            let n = duktape_sys::duk_get_top(ctx);
-            if n < #args_count {
-                return -1;
+        struct #struct_name;
+
+        impl duktape::Function for #struct_name {
+            const ARGS: i32 = #raw_args_count;
+
+            fn ptr(&self) -> unsafe extern "C" fn(*mut duktape_sys::duk_context) -> i32 {
+                Self::#fn_name
             }
-            #(#args_getters)*
-            let rctx = &mut Context { inner: ctx };
-            let result = #fn_name(rctx, #(#args_names),*);
-            #push_result
-            #return_count
+        }
+
+        impl #struct_name {
+            pub unsafe extern "C" fn #fn_name(raw: *mut duktape_sys::duk_context) -> i32 {
+                #parsed
+
+                let ctx = &mut duktape::Context::from_raw(raw);
+                let n = ctx.stack_len();
+                if n < #args_count {
+                    return -1;
+                }
+                #(#args_getters)*
+                ctx.pop_n(#raw_args_count);
+                let result = #fn_name(ctx, #(#args_names),*);
+                #push_result
+                #return_count
+            }
         }
     );
 
-    println!("{}", res);
+    //println!("{}", res);
     res.into()
 }
