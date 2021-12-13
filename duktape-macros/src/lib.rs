@@ -5,6 +5,7 @@ use syn::{Ident, ItemFn};
 
 #[proc_macro_attribute]
 pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
+    println!("attrs: {:?}", attr);
     let parsed: ItemFn = syn::parse_macro_input!(input);
     let mut args = Vec::new();
     let fn_name = parsed.sig.ident.clone();
@@ -39,7 +40,7 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
     let args_count = args.len() as i32;
-    let raw_args_count = (args_count - 1).max(0);
+    let raw_args_count = args_count - 1;
 
     let args_names: Vec<_> = args
         .iter()
@@ -72,22 +73,24 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
         impl duktape::Function for #struct_name {
             const ARGS: i32 = #raw_args_count;
 
-            fn ptr(&self) -> unsafe extern "C" fn(*mut duktape_sys::duk_context) -> i32 {
+            fn ptr(&self) -> unsafe extern "C" fn(*mut ::duktape_sys::duk_context) -> i32 {
                 Self::#fn_name
             }
         }
 
         impl #struct_name {
-            pub unsafe extern "C" fn #fn_name(raw: *mut duktape_sys::duk_context) -> i32 {
+            pub unsafe extern "C" fn #fn_name(raw: *mut ::duktape_sys::duk_context) -> i32 {
                 #parsed
 
                 let ctx = &mut duktape::Context::from_raw(raw);
                 let n = ctx.stack_len();
-                if n < #args_count {
+                if n < #raw_args_count {
                     return -1;
                 }
                 #(#args_getters)*
-                ctx.pop_n(#raw_args_count);
+                if #raw_args_count > 0 {
+                    ctx.pop_n(#raw_args_count);
+                }
                 let result = #fn_name(ctx, #(#args_names),*);
                 #push_result
                 #return_count

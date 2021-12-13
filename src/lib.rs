@@ -19,17 +19,6 @@ pub trait Function {
     fn ptr(&self) -> CFunction;
 }
 
-macro_rules! declare_function(
-    ($name: ident, $args: literal, $e: expr) => {
-        unsafe extern "C" fn $name(ctx: *mut duktape_sys::duk_context) -> i32 {
-            let mut ctx = Context { inner: ctx };
-            let val = $e(&mut ctx);
-            std::mem::forget(ctx);
-            val
-        }
-    }
-);
-
 macro_rules! push_function(
     ($ctx: ident, $name: ident, $args: literal) => {
         unsafe {
@@ -66,6 +55,17 @@ impl Context {
 
     pub fn push_function<F: Function>(&mut self, f: F) {
         unsafe { duktape_sys::duk_push_c_function(self.inner, Some(f.ptr()), F::ARGS) };
+    }
+
+    pub fn register_function<F: Function>(&mut self, name: &str, f: F) {
+        self.push_function(f);
+        unsafe {
+            duktape_sys::duk_put_global_lstring(
+                self.inner,
+                name.as_ptr() as *const i8,
+                name.len() as u64,
+            );
+        }
     }
 
     pub fn call_function<F: Function>(&mut self, f: F) -> Result<(), Error> {
@@ -256,14 +256,6 @@ impl Context {
             ) > 0
         }
     }
-
-    /*
-        pub fn push_function<F: Function>(&mut self, f: F) {
-            unsafe {
-                duktape_sys::duk_push_c_function(self.inner, Some(func), args);
-            }
-        }
-    */
 }
 
 impl Default for Context {
@@ -342,56 +334,32 @@ mod tests {
 
     #[test]
     fn it_works() {
+        use crate as duktape;
         let mut ctx = Context::default();
 
-        struct Print {}
-
-        impl Function for Print {
-            const ARGS: ArgCount = ArgCount::Variable;
-
-            fn call(ctx: &mut Context) -> i32 {
-                let mut len: u64 = 0;
-                let cstr = unsafe {
-                    ctx.push_string(",");
-                    duktape_sys::duk_insert(ctx.inner, 0);
-                    duktape_sys::duk_join(ctx.inner, duktape_sys::duk_get_top(ctx.inner) - 1);
-                    CStr::from_ptr(duktape_sys::duk_safe_to_lstring(ctx.inner, -1, &mut len))
-                };
-                eprintln!("{:?}", cstr.to_str());
-                0
-            }
+        #[duktape]
+        fn print(ctx: &mut Context) -> String {
+            ctx.push_string(",");
+            unsafe {
+                duktape_sys::duk_insert(ctx.as_raw(), 0);
+                duktape_sys::duk_join(ctx.as_raw(), duktape_sys::duk_get_top(ctx.as_raw()) - 1);
+            };
+            let v = ctx.peek(-1);
+            println!("{}", v);
+            v
         }
 
-        declare_function!(print, -1, Print::call);
-        //ctx.push_number(1.0);
-        push_function!(ctx, print, -1);
-        ctx.eval("print('hello', 1);");
+        ctx.register_function("print", Print);
+        let s = ctx.eval::<String>("print('hello', 1, 2);").unwrap();
+        assert_eq!(s, "hello,1,2");
         ctx.pop();
     }
 
     #[test]
     fn serialized() {
-        let mut ctx = Context::default();
+        use crate as duktape;
 
-        struct Print {}
-
-        impl Function for Print {
-            const ARGS: ArgCount = ArgCount::Variable;
-
-            fn call(ctx: &mut Context) -> i32 {
-                let mut len: u64 = 0;
-                let cstr = unsafe {
-                    ctx.push_string(",");
-                    duktape_sys::duk_insert(ctx.inner, 0);
-                    duktape_sys::duk_join(ctx.inner, duktape_sys::duk_get_top(ctx.inner) - 1);
-                    CStr::from_ptr(duktape_sys::duk_safe_to_lstring(ctx.inner, -1, &mut len))
-                };
-                eprintln!("{:?}", cstr.to_str());
-                0
-            }
-        }
-
-        #[derive(serde::Serialize)]
+        #[derive(serde::Serialize, Debug)]
         struct T {
             hello: String,
         }
@@ -399,12 +367,20 @@ mod tests {
             hello: "world".to_string(),
         };
 
-        declare_function!(print, -1, Print::call);
-        //ctx.push_number(1.0);
-        let _func_idx = push_function!(ctx, print, -1);
-        //ctx.dup(func_idx);
-        ctx.get_global_str("print");
-        //ctx.push_string(t);
+        #[duktape]
+        fn print(ctx: &mut Context) -> String {
+            ctx.push_string(",");
+            unsafe {
+                duktape_sys::duk_insert(ctx.as_raw(), 0);
+                duktape_sys::duk_join(ctx.as_raw(), duktape_sys::duk_get_top(ctx.as_raw()) - 1);
+            };
+            let v = ctx.peek(-1);
+            println!("RES: {}", v);
+            v
+        }
+
+        let mut ctx = Context::default();
+        ctx.push_function(Print);
         ctx.push(&t);
         ctx.call(1);
 
