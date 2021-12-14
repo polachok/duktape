@@ -48,9 +48,14 @@ impl Context {
         unsafe { duktape_sys::duk_get_top(self.inner) }
     }
 
-    pub fn push<T: serde::Serialize>(&mut self, value: &T) {
+    pub fn push<T: serde::Serialize>(&mut self, value: &T) -> duktape_sys::duk_idx_t {
         let mut serializer = serialize::DuktapeSerializer::from_ctx(self);
         value.serialize(&mut serializer).unwrap();
+        self.stack_len() - 1
+    }
+
+    pub fn push_this(&mut self) {
+        unsafe { duktape_sys::duk_push_this(self.inner) }
     }
 
     pub fn push_function<F: Function>(&mut self, f: F) {
