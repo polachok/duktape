@@ -1,7 +1,7 @@
 use std::ffi::CStr;
 use thiserror::Error;
 
-use duktape_macros::duktape;
+pub use duktape_macros::duktape;
 
 mod serialize;
 
@@ -18,17 +18,6 @@ pub trait Function {
 
     fn ptr(&self) -> CFunction;
 }
-
-macro_rules! push_function(
-    ($ctx: ident, $name: ident, $args: literal) => {
-        unsafe {
-            let idx = duktape_sys::duk_push_c_function($ctx.inner, Some($name), $args);
-            let fname = stringify!($name);
-            duktape_sys::duk_put_global_lstring($ctx.inner, fname.as_ptr() as *const i8, fname.len() as u64);
-            idx
-        }
-    }
-);
 
 #[repr(transparent)]
 pub struct Context {
