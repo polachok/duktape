@@ -18,7 +18,11 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
         syn::ReturnType::Default => (0, None),
         syn::ReturnType::Type(_, typ) => {
             let ident = match &**typ {
-                syn::Type::Path(path) => path.path.get_ident().unwrap().clone(),
+                syn::Type::Path(path) => {
+                    let ident = path.path.get_ident().unwrap().clone();
+                    quote!(#ident)
+                }
+                syn::Type::Reference(type_ref) => quote!(#type_ref),
                 _ => panic!("unsupported return type"),
             };
             (1, Some(ident))

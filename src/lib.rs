@@ -43,6 +43,12 @@ impl Context {
         self.stack_len() - 1
     }
 
+    pub fn push_fixed_buffer(&mut self, value: &[u8]) {
+        let buf = unsafe { duktape_sys::duk_push_buffer_raw(self.inner, value.len() as u64, 0) };
+        let buf = buf as *mut u8;
+        unsafe { std::ptr::copy_nonoverlapping(value.as_ptr(), buf, value.len()) }
+    }
+
     pub fn push_this(&mut self) {
         unsafe { duktape_sys::duk_push_this(self.inner) }
     }
@@ -240,6 +246,10 @@ impl Context {
         unsafe { duktape_sys::duk_require_object(self.inner, idx) }
     }
 
+    pub fn get_length(&mut self, idx: duktape_sys::duk_idx_t) -> usize {
+        unsafe { duktape_sys::duk_get_length(self.inner, idx) as usize }
+    }
+
     pub fn get_prop(&mut self, name: &str, idx: duktape_sys::duk_idx_t) -> bool {
         unsafe {
             duktape_sys::duk_get_prop_lstring(
@@ -249,6 +259,26 @@ impl Context {
                 name.len() as u64,
             ) > 0
         }
+    }
+
+    pub fn get_prop_index(&mut self, prop_idx: u32, idx: duktape_sys::duk_idx_t) -> bool {
+        unsafe { duktape_sys::duk_get_prop_index(self.inner, idx, prop_idx) > 0 }
+    }
+
+    pub fn get_buffer(&mut self, idx: duktape_sys::duk_idx_t) -> Vec<u8> {
+        let mut buf_len = 0;
+        let buf_ptr = unsafe { duktape_sys::duk_require_buffer_data(self.inner, idx, &mut buf_len) }
+            as *const u8;
+        if buf_len == 0 {
+            return Vec::new();
+        } else {
+            let slice = unsafe { std::slice::from_raw_parts(buf_ptr, buf_len as usize) };
+            slice.to_vec()
+        }
+    }
+
+    pub fn is_array(&mut self, idx: duktape_sys::duk_idx_t) -> bool {
+        unsafe { duktape_sys::duk_is_array(self.inner, idx) > 0 }
     }
 }
 

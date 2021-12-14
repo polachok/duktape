@@ -2,6 +2,71 @@ use duktape::Context;
 use duktape_macros::*;
 
 #[test]
+fn ret_ref_array() {
+    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    pub struct Obj {
+        data: Vec<u8>,
+    }
+
+    impl Obj {
+        #[duktape(Obj)]
+        fn get_data(&self) -> &[u8] {
+            &self.data[..]
+        }
+
+        fn push(&self, ctx: &mut Context) {
+            let idx = ctx.push(self);
+            Self::register_get_data(ctx, idx, "getData");
+        }
+    }
+
+    let obj = Obj {
+        data: [0, 1, 2, 3].to_vec(),
+    };
+    let mut ctx = Context::default();
+    ctx.eval::<()>("var getData = function(obj) { return obj.getData() }")
+        .unwrap();
+    ctx.get_global_str("getData");
+    obj.push(&mut ctx);
+    ctx.call(1);
+    let res = ctx.peek::<Vec<u8>>(-1);
+    assert_eq!(res, &[0, 1, 2, 3]);
+}
+
+#[test]
+fn ret_ref_buf() {
+    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    pub struct Obj {
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    }
+
+    impl Obj {
+        #[duktape(Obj)]
+        fn get_data(&self) -> &[u8] {
+            &self.data[..]
+        }
+
+        fn push(&self, ctx: &mut Context) {
+            let idx = ctx.push(self);
+            Self::register_get_data(ctx, idx, "getData");
+        }
+    }
+
+    let obj = Obj {
+        data: [0, 1, 2, 3].to_vec(),
+    };
+    let mut ctx = Context::default();
+    ctx.eval::<()>("var getData = function(obj) { return obj.getData() }")
+        .unwrap();
+    ctx.get_global_str("getData");
+    obj.push(&mut ctx);
+    ctx.call(1);
+    let res = ctx.peek::<Vec<u8>>(-1);
+    assert_eq!(res, &[0, 1, 2, 3]);
+}
+
+#[test]
 fn method() {
     #[derive(Debug, serde::Deserialize, serde::Serialize)]
     pub struct Obj {

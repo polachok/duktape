@@ -121,8 +121,9 @@ impl<'a, 'ctx> Serializer for &'a mut DuktapeSerializer<'ctx> {
         Ok(())
     }
 
-    fn serialize_bytes(self, _v: &[u8]) -> Result<Self::Ok> {
-        Err(Error::unsupported())
+    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
+        self.ctx.push_fixed_buffer(v);
+        Ok(())
     }
 
     fn serialize_none(self) -> Result<Self::Ok> {
@@ -174,6 +175,7 @@ impl<'a, 'ctx> Serializer for &'a mut DuktapeSerializer<'ctx> {
 
     fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
         let obj_id = self.ctx.push_array();
+
         self.objects.push(obj_id);
         Ok(DuktapeSeqSerializer {
             inner: self,
@@ -528,20 +530,21 @@ impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
         visitor.visit_string(val)
     }
 
-    // The `Serializer` implementation on the previous page serialized byte
-    // arrays as JSON arrays of bytes. Handle that representation here.
-    fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(Error::unsupported())
+        println!("kek");
+        let bytes = self.inner.get_buffer(self.stack_idx);
+        visitor.visit_bytes(&bytes)
     }
 
-    fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(Error::unsupported())
+        let bytes = self.inner.get_buffer(self.stack_idx);
+        visitor.visit_byte_buf(bytes)
     }
 
     fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value>
@@ -575,10 +578,20 @@ impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
         visitor.visit_newtype_struct(self)
     }
 
-    fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
+        let is_array = self.inner.is_array(self.stack_idx);
+        if is_array {
+            let length = self.inner.get_length(self.stack_idx);
+            self.inner.get_object(self.stack_idx);
+            return visitor.visit_seq(DuktapeArrayDeserializer {
+                ctx: self.inner,
+                idx: 0,
+                length,
+            });
+        }
         Err(Error::unsupported())
     }
 
@@ -622,7 +635,6 @@ impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
             ctx: self.inner,
             fields,
             idx: 0,
-            obj_idx: self.stack_idx,
         };
         let res = visitor.visit_seq(des)?;
         self.inner.pop();
@@ -633,7 +645,7 @@ impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
         self,
         _name: &'static str,
         _variants: &'static [&'static str],
-        visitor: V,
+        _visitor: V,
     ) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -671,11 +683,37 @@ impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
     }
 }
 
+struct DuktapeArrayDeserializer<'ctx> {
+    ctx: &'ctx mut Context,
+    idx: usize,
+    length: usize,
+}
+
+impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeArrayDeserializer<'ctx> {
+    type Error = Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+    where
+        T: serde::de::DeserializeSeed<'de>,
+    {
+        if self.idx < self.length {
+            if !self.ctx.get_prop_index(self.idx as u32, -1) {
+                return Err(Error::Message("incorrect field".to_string()));
+            }
+            let mut deserializer = DuktapeDeserializer::from_ctx(&mut *self.ctx, -1);
+            let val = seed.deserialize(&mut deserializer)?;
+            self.idx += 1;
+            self.ctx.pop();
+            return Ok(Some(val));
+        }
+        Ok(None)
+    }
+}
+
 struct DuktapeStructDeserializer<'ctx> {
     ctx: &'ctx mut Context,
     fields: &'static [&'static str],
     idx: usize,
-    obj_idx: i32,
 }
 
 impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeStructDeserializer<'ctx> {
@@ -686,7 +724,7 @@ impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeStructDeserializer<'ctx> {
         T: serde::de::DeserializeSeed<'de>,
     {
         if let Some(prop_name) = self.fields.get(self.idx) {
-            if !self.ctx.get_prop(prop_name, 0) {
+            if !self.ctx.get_prop(prop_name, -1) {
                 return Err(Error::Message("incorrect field".to_string()));
             }
             let mut deserializer = DuktapeDeserializer::from_ctx(&mut *self.ctx, -1);
