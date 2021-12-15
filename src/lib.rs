@@ -1,9 +1,11 @@
 use std::ffi::CStr;
 use thiserror::Error;
 
-pub use duktape_macros::duktape;
+pub use duktape_macros::{duktape, Value};
+pub use value::{PeekValue, PushValue};
 
-mod serialize;
+pub mod serialize;
+pub mod value;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -37,10 +39,8 @@ impl Context {
         unsafe { duktape_sys::duk_get_top(self.inner) }
     }
 
-    pub fn push<T: serde::Serialize>(&mut self, value: &T) -> duktape_sys::duk_idx_t {
-        let mut serializer = serialize::DuktapeSerializer::from_ctx(self);
-        value.serialize(&mut serializer).unwrap();
-        self.stack_len() - 1
+    pub fn push<T: PushValue>(&mut self, value: &T) -> duktape_sys::duk_idx_t {
+        value.push_to(self)
     }
 
     pub fn push_fixed_buffer(&mut self, value: &[u8]) {
@@ -76,9 +76,8 @@ impl Context {
         Ok(())
     }
 
-    pub fn peek<T: serde::de::Deserialize<'static>>(&mut self, idx: i32) -> T {
-        let mut deserializer = serialize::DuktapeDeserializer::from_ctx(self, idx);
-        T::deserialize(&mut deserializer).unwrap()
+    pub fn peek<T: PeekValue>(&mut self, idx: i32) -> T {
+        T::peek_at(self, idx)
     }
 
     pub fn put_global_string(&mut self, value: &str) {
@@ -151,7 +150,7 @@ impl Context {
         }
     }
 
-    pub fn eval<T: serde::Deserialize<'static>>(&mut self, value: &str) -> Result<T, Error> {
+    pub fn eval<T: PeekValue>(&mut self, value: &str) -> Result<T, Error> {
         const DUK_COMPILE_EVAL: u32 = 1 << 3;
         const DUK_COMPILE_SAFE: u32 = 1 << 7;
         const DUK_COMPILE_NOSOURCE: u32 = 1 << 9;
@@ -182,7 +181,7 @@ impl Context {
         }
     }
 
-    pub fn pop_value<T: serde::de::Deserialize<'static>>(&mut self) -> T {
+    pub fn pop_value<T: PeekValue>(&mut self) -> T {
         let value = self.peek(-1);
         self.pop();
         value
@@ -383,7 +382,7 @@ mod tests {
     fn serialized() {
         use crate as duktape;
 
-        #[derive(serde::Serialize, Debug)]
+        #[derive(serde::Serialize, serde::Deserialize, Value, Debug)]
         struct T {
             hello: String,
         }

@@ -3,6 +3,31 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::{Ident, ItemFn};
 
+#[proc_macro_derive(Value)]
+pub fn value(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    let ident = input.ident.clone();
+
+    let res = quote! {
+        impl duktape::PushValue for #ident {
+            fn push_to(&self, ctx: &mut duktape::Context) -> i32 {
+                use ::serde::Serialize;
+                let mut serializer = duktape::serialize::DuktapeSerializer::from_ctx(ctx);
+                self.serialize(&mut serializer).unwrap(); // TODO
+                ctx.stack_len() - 1
+            }
+        }
+        impl duktape::PeekValue for #ident {
+            fn peek_at(ctx: &mut Context, idx: i32) -> Self {
+                use ::serde::Deserialize;
+                let mut deserializer = duktape::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
+                Self::deserialize(&mut deserializer).unwrap() // TODO
+            }
+        }
+    };
+    res.into()
+}
+
 #[proc_macro_attribute]
 pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
     let parsed_attr: Option<Ident> = syn::parse_macro_input!(attr);
@@ -73,7 +98,9 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
     let push_result = match return_type {
         Some(_) => {
             quote!(
-                ctx.push(&result);
+                use duktape::value::PushValue;
+                result.push_to(ctx);
+                //ctx.push(&result);
             )
         }
         None => quote!(),
@@ -157,7 +184,6 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
             }
         )
     };
-
     //println!("{}", res);
     res.into()
 }

@@ -756,7 +756,7 @@ fn deserialize_obj() {
         hello: "world".to_string(),
         num: 42,
     };
-    ctx.push(&t1);
-    let t2 = ctx.peek::<T>(0);
-    assert_eq!(t1, t2);
+    ctx.push(&crate::value::SerdeValue(&t1));
+    let t2: crate::value::SerdeValue<T> = ctx.peek(0);
+    assert_eq!(t1, t2.0);
 }

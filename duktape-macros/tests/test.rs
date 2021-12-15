@@ -3,7 +3,7 @@ use duktape_macros::*;
 
 #[test]
 fn ret_ref_array() {
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
     pub struct Obj {
         data: Vec<u8>,
     }
@@ -35,7 +35,7 @@ fn ret_ref_array() {
 
 #[test]
 fn ret_ref_buf() {
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
     pub struct Obj {
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
@@ -68,7 +68,7 @@ fn ret_ref_buf() {
 
 #[test]
 fn method() {
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
     pub struct Obj {
         data: String,
         counter: u32,
@@ -102,7 +102,7 @@ fn method() {
 
 #[test]
 fn object() {
-    #[derive(Debug, serde::Deserialize, serde::Serialize)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
     pub struct Pdo {
         data: String,
         counter: u32,
