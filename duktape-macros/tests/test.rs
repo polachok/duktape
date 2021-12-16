@@ -4,6 +4,7 @@ use duktape_macros::*;
 #[test]
 fn ret_ref_array() {
     #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
+    #[duktape(Peek, Push, Serialize)]
     pub struct Obj {
         data: Vec<u8>,
     }
@@ -15,7 +16,7 @@ fn ret_ref_array() {
         }
 
         fn push(&self, ctx: &mut Context) {
-            let idx = ctx.push(self);
+            let idx = ctx.push(&self.push_value());
             Self::register_get_data(ctx, idx, "getData");
         }
     }

@@ -57,6 +57,15 @@ impl Context {
         unsafe { duktape_sys::duk_push_c_function(self.inner, Some(f.ptr()), F::ARGS) };
     }
 
+    // Push p into the stack as a pointer value. Duktape won't interpret the pointer in any manner.
+    pub fn push_pointer(&mut self, p: *const std::ffi::c_void) {
+        unsafe { duktape_sys::duk_push_pointer(self.inner, p as *mut _) };
+    }
+
+    pub fn get_pointer(&mut self, idx: i32) -> *const std::ffi::c_void {
+        unsafe { duktape_sys::duk_require_pointer(self.inner, idx) }
+    }
+
     pub fn register_function<F: Function>(&mut self, name: &str, f: F) {
         self.push_function(f);
         unsafe {
@@ -199,6 +208,10 @@ impl Context {
 
     pub fn call(&mut self, n_args: duktape_sys::duk_idx_t) {
         unsafe { duktape_sys::duk_call(self.inner, n_args) }
+    }
+
+    pub fn call_prop(&mut self, obj_id: duktape_sys::duk_idx_t, n_args: duktape_sys::duk_idx_t) {
+        unsafe { duktape_sys::duk_call_prop(self.inner, obj_id, n_args) }
     }
 
     pub fn get_global_str(&mut self, value: &str) -> bool {

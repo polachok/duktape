@@ -12,7 +12,7 @@ pub trait PeekValue {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct SerdeValue<T: ?Sized>(pub T);
+pub struct SerdeValue<T: ?Sized>(pub T);
 
 impl<'a, T: ?Sized> PushValue for SerdeValue<&'a T>
 where
@@ -53,6 +53,8 @@ macro_rules! via_serde {
     };
 }
 
+via_serde!(());
+via_serde!(bool);
 via_serde!(u8);
 via_serde!(u16);
 via_serde!(u32);
@@ -62,6 +64,16 @@ via_serde!(i32);
 via_serde!(f32);
 via_serde!(f64);
 via_serde!(String);
+
+impl<'de, T> PeekValue for Vec<T>
+where
+    T: Deserialize<'de>,
+{
+    fn peek_at(ctx: &mut Context, idx: i32) -> Self {
+        let v: SerdeValue<Self> = SerdeValue::peek_at(ctx, idx);
+        v.0
+    }
+}
 
 impl<T> PushValue for [T]
 where

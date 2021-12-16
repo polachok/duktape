@@ -3,28 +3,105 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::{Ident, ItemFn};
 
-#[proc_macro_derive(Value)]
+#[proc_macro_derive(Value, attributes(duktape))]
 pub fn value(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let ident = input.ident.clone();
+    let options = input
+        .attrs
+        .iter()
+        .filter(|attr| {
+            if let Some(ident) = attr.path.get_ident() {
+                ident.to_string() == "duktape"
+            } else {
+                false
+            }
+        })
+        .filter_map(|attr| attr.parse_meta().ok())
+        .filter_map(|meta| match meta {
+            syn::Meta::List(list) => Some(list),
+            _ => None,
+        })
+        .map(|list| {
+            let mut idents = vec![];
+            for val in list.nested {
+                match val {
+                    syn::NestedMeta::Meta(meta) => match meta {
+                        syn::Meta::Path(path) => idents.push(path.get_ident().unwrap().clone()),
+                        _ => {}
+                    },
+                    syn::NestedMeta::Lit(_) => {}
+                }
+            }
+            idents
+        })
+        .flatten()
+        .collect::<Vec<Ident>>();
 
-    let res = quote! {
-        impl duktape::PushValue for #ident {
-            fn push_to(&self, ctx: &mut duktape::Context) -> i32 {
-                use ::serde::Serialize;
-                let mut serializer = duktape::serialize::DuktapeSerializer::from_ctx(ctx);
-                self.serialize(&mut serializer).unwrap(); // TODO
-                ctx.stack_len() - 1
+    const GENERATE_PEEK: u8 = 1;
+    const GENERATE_PUSH: u8 = 2;
+    const GENERATE_AS_SERIALIZE: u8 = 4;
+    const DEFAULT: u8 = GENERATE_PEEK | GENERATE_PUSH | GENERATE_AS_SERIALIZE;
+    let flags = if options.is_empty() {
+        DEFAULT
+    } else {
+        let mut flags = 0;
+        for option in &options {
+            flags |= match option.to_string().as_str() {
+                "Peek" => GENERATE_PEEK,
+                "Push" => GENERATE_PUSH,
+                "Serialize" => GENERATE_AS_SERIALIZE,
+                val => panic!(
+                    "unknown attribute value: {}, expected Peek, Push, Serialize",
+                    val
+                ),
             }
         }
-        impl duktape::PeekValue for #ident {
-            fn peek_at(ctx: &mut Context, idx: i32) -> Self {
-                use ::serde::Deserialize;
-                let mut deserializer = duktape::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
-                Self::deserialize(&mut deserializer).unwrap() // TODO
-            }
-        }
+        flags
     };
+
+    let ser = if flags & GENERATE_AS_SERIALIZE != 0 {
+        quote! {
+            impl #ident {
+                fn push_value<'a>(&'a self) -> impl duktape::value::PushValue + 'a {
+                    use duktape::value::SerdeValue;
+                    SerdeValue(self)
+                }
+            }
+        }
+    } else {
+        quote!()
+    };
+
+    let push = if flags & GENERATE_PUSH != 0 {
+        quote! {
+            impl duktape::PushValue for #ident {
+                fn push_to(&self, ctx: &mut duktape::Context) -> i32 {
+                    use ::serde::Serialize;
+                    let mut serializer = duktape::serialize::DuktapeSerializer::from_ctx(ctx);
+                    self.serialize(&mut serializer).unwrap(); // TODO
+                    ctx.stack_len() - 1
+                }
+            }
+        }
+    } else {
+        quote!()
+    };
+    let peek = if flags & GENERATE_PEEK != 0 {
+        quote! {
+            impl duktape::PeekValue for #ident {
+                fn peek_at(ctx: &mut Context, idx: i32) -> Self {
+                    use ::serde::Deserialize;
+                    let mut deserializer = duktape::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
+                    Self::deserialize(&mut deserializer).unwrap() // TODO
+                }
+            }
+        }
+    } else {
+        quote!()
+    };
+    let res = quote!( #peek #push #ser );
+    //println!("{}", res);
     res.into()
 }
 
