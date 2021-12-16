@@ -132,6 +132,13 @@ fn generics() {
     }
 }
 
+fn arrays() {
+    #[duktape]
+    fn bla(_ctx: &mut Context, _data: Vec<u8>) -> [u8; 20] {
+        panic!()
+    }
+}
+
 #[test]
 fn adder() {
     #[duktape]

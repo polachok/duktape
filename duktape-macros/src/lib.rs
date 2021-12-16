@@ -123,6 +123,9 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
                 syn::Type::Path(path) => {
                     quote!(#path)
                 }
+                syn::Type::Array(arr) => {
+                    quote!(#arr)
+                }
                 syn::Type::Reference(type_ref) => quote!(#type_ref),
                 _ => panic!("unsupported return type"),
             };
