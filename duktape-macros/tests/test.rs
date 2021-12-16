@@ -125,6 +125,14 @@ fn object() {
 }
 
 #[test]
+fn generics() {
+    #[duktape]
+    fn bla(_ctx: &mut Context, data: Vec<u8>) -> Vec<u8> {
+        data
+    }
+}
+
+#[test]
 fn adder() {
     #[duktape]
     fn bla(_ctx: &mut Context, a: u32, b: u32) -> u32 {
