@@ -206,16 +206,44 @@ impl Context {
         }
     }
 
+    pub fn swap(&mut self, a: i32, b: i32) {
+        unsafe { duktape_sys::duk_swap(self.inner, a, b) }
+    }
+
     pub fn dup(&mut self, idx: duktape_sys::duk_idx_t) {
         unsafe { duktape_sys::duk_dup(self.inner, idx) }
     }
 
-    pub fn call(&mut self, n_args: duktape_sys::duk_idx_t) {
-        unsafe { duktape_sys::duk_call(self.inner, n_args) }
+    pub fn call(&mut self, n_args: duktape_sys::duk_idx_t) -> Result<(), Error> {
+        let rc = unsafe { duktape_sys::duk_pcall(self.inner, n_args) };
+        if rc == 0 {
+            Ok(())
+        } else {
+            let mut len = 0;
+            let err =
+                unsafe { duktape_sys::duk_safe_to_lstring(self.inner, -1, &mut len) } as *const u8;
+            let msg = unsafe { std::slice::from_raw_parts(err, len as usize) };
+            let str = std::str::from_utf8(msg).unwrap().to_owned();
+            Err(Error::Message(str))
+        }
     }
 
-    pub fn call_prop(&mut self, obj_id: duktape_sys::duk_idx_t, n_args: duktape_sys::duk_idx_t) {
-        unsafe { duktape_sys::duk_call_prop(self.inner, obj_id, n_args) }
+    pub fn call_prop(
+        &mut self,
+        obj_id: duktape_sys::duk_idx_t,
+        n_args: duktape_sys::duk_idx_t,
+    ) -> Result<(), Error> {
+        let rc = unsafe { duktape_sys::duk_pcall_prop(self.inner, obj_id, n_args) };
+        if rc == 0 {
+            Ok(())
+        } else {
+            let mut len = 0;
+            let err =
+                unsafe { duktape_sys::duk_safe_to_lstring(self.inner, -1, &mut len) } as *const u8;
+            let msg = unsafe { std::slice::from_raw_parts(err, len as usize) };
+            let str = std::str::from_utf8(msg).unwrap().to_owned();
+            Err(Error::Message(str))
+        }
     }
 
     pub fn get_global_str(&mut self, value: &str) -> bool {

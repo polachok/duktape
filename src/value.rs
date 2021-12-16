@@ -9,6 +9,14 @@ pub trait PushValue {
 
 pub trait PeekValue: Sized {
     fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self>;
+
+    fn pop(ctx: &mut Context) -> Option<Self> {
+        let this = Self::peek_at(ctx, -1);
+        if this.is_some() {
+            ctx.pop();
+        }
+        this
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
