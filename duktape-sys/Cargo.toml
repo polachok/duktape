@@ -8,5 +8,5 @@ edition = "2021"
 libc = "0.2"
 
 [build-dependencies]
-bindgen = "0.53"
+bindgen = "0.59"
 cc = "1.0"
