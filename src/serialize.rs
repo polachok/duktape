@@ -127,7 +127,7 @@ impl<'a, 'ctx> Serializer for &'a mut DuktapeSerializer<'ctx> {
     }
 
     fn serialize_none(self) -> Result<Self::Ok> {
-        self.ctx.push_null();
+        self.ctx.push_undefined();
         Ok(())
     }
 
@@ -741,7 +741,7 @@ impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeStructDeserializer<'ctx> {
 fn deserialize_num() {
     let mut ctx = super::Context::default();
     ctx.push(&42.0f64);
-    assert_eq!(ctx.peek::<f64>(-1), 42.0f64);
+    assert_eq!(ctx.peek::<f64>(-1).unwrap(), 42.0f64);
 }
 
 #[test]
@@ -757,6 +757,6 @@ fn deserialize_obj() {
         num: 42,
     };
     ctx.push(&crate::value::SerdeValue(&t1));
-    let t2: crate::value::SerdeValue<T> = ctx.peek(0);
+    let t2: crate::value::SerdeValue<T> = ctx.peek(0).unwrap();
     assert_eq!(t1, t2.0);
 }

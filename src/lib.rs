@@ -85,7 +85,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn peek<T: PeekValue>(&mut self, idx: i32) -> T {
+    pub fn peek<T: PeekValue>(&mut self, idx: i32) -> Option<T> {
         T::peek_at(self, idx)
     }
 
@@ -130,6 +130,10 @@ impl Context {
 
     pub fn push_null(&mut self) {
         unsafe { duktape_sys::duk_push_null(self.inner) }
+    }
+
+    pub fn push_undefined(&mut self) {
+        unsafe { duktape_sys::duk_push_undefined(self.inner) }
     }
 
     pub fn push_double(&mut self, value: f64) {
@@ -180,7 +184,7 @@ impl Context {
             let str = std::str::from_utf8(slice).unwrap();
             return Err(Error::Message(str.to_owned()));
         } else {
-            Ok(self.peek(-1))
+            self.peek(-1).ok_or(Error::Message("failed to peek".into()))
         }
     }
 
@@ -190,7 +194,7 @@ impl Context {
         }
     }
 
-    pub fn pop_value<T: PeekValue>(&mut self) -> T {
+    pub fn pop_value<T: PeekValue>(&mut self) -> Option<T> {
         let value = self.peek(-1);
         self.pop();
         value
@@ -289,6 +293,18 @@ impl Context {
         }
     }
 
+    pub fn get_buffer_opt(&mut self, idx: duktape_sys::duk_idx_t) -> Option<Vec<u8>> {
+        let mut buf_len = 0;
+        let buf_ptr =
+            unsafe { duktape_sys::duk_get_buffer_data(self.inner, idx, &mut buf_len) } as *const u8;
+        if buf_len == 0 || buf_ptr == std::ptr::null() {
+            return None;
+        } else {
+            let slice = unsafe { std::slice::from_raw_parts(buf_ptr, buf_len as usize) };
+            Some(slice.to_vec())
+        }
+    }
+
     pub fn is_array(&mut self, idx: duktape_sys::duk_idx_t) -> bool {
         unsafe { duktape_sys::duk_is_array(self.inner, idx) > 0 }
     }
@@ -380,7 +396,7 @@ mod tests {
                 duktape_sys::duk_insert(ctx.as_raw(), 0);
                 duktape_sys::duk_join(ctx.as_raw(), duktape_sys::duk_get_top(ctx.as_raw()) - 1);
             };
-            let v = ctx.peek(-1);
+            let v = ctx.peek(-1).unwrap();
             println!("{}", v);
             v
         }
@@ -410,7 +426,7 @@ mod tests {
                 duktape_sys::duk_insert(ctx.as_raw(), 0);
                 duktape_sys::duk_join(ctx.as_raw(), duktape_sys::duk_get_top(ctx.as_raw()) - 1);
             };
-            let v = ctx.peek(-1);
+            let v = ctx.peek(-1).unwrap();
             println!("RES: {}", v);
             v
         }

@@ -7,8 +7,8 @@ pub trait PushValue {
     fn push_to(&self, ctx: &mut Context) -> i32;
 }
 
-pub trait PeekValue {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Self;
+pub trait PeekValue: Sized {
+    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -29,9 +29,9 @@ impl<'de, T> PeekValue for SerdeValue<T>
 where
     T: Deserialize<'de>,
 {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Self {
+    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
         let mut deserializer = serialize::DuktapeDeserializer::from_ctx(ctx, idx);
-        Self::deserialize(&mut deserializer).unwrap() // TODO
+        Self::deserialize(&mut deserializer).ok() // TODO
     }
 }
 
@@ -45,9 +45,9 @@ macro_rules! via_serde {
         }
 
         impl PeekValue for $t {
-            fn peek_at(ctx: &mut Context, idx: i32) -> Self {
-                let v: SerdeValue<Self> = SerdeValue::peek_at(ctx, idx);
-                v.0
+            fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
+                let v: Option<SerdeValue<Self>> = SerdeValue::peek_at(ctx, idx);
+                v.map(|v| v.0)
             }
         }
     };
@@ -65,13 +65,32 @@ via_serde!(f32);
 via_serde!(f64);
 via_serde!(String);
 
+impl<T: PushValue> PushValue for Option<T> {
+    fn push_to(&self, ctx: &mut Context) -> i32 {
+        let idx = match self {
+            Some(v) => v.push_to(ctx),
+            None => {
+                ctx.push_undefined();
+                ctx.stack_len() - 1
+            }
+        };
+        idx
+    }
+}
+
+impl<T: PeekValue> PeekValue for Option<T> {
+    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
+        Some(T::peek_at(ctx, idx))
+    }
+}
+
 impl<'de, T> PeekValue for Vec<T>
 where
     T: Deserialize<'de>,
 {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Self {
-        let v: SerdeValue<Self> = SerdeValue::peek_at(ctx, idx);
-        v.0
+    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
+        let v: Option<_> = SerdeValue::peek_at(ctx, idx);
+        v.map(|v| v.0)
     }
 }
 

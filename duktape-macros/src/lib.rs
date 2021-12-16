@@ -90,10 +90,10 @@ pub fn value(input: TokenStream) -> TokenStream {
     let peek = if flags & GENERATE_PEEK != 0 {
         quote! {
             impl duktape::PeekValue for #ident {
-                fn peek_at(ctx: &mut Context, idx: i32) -> Self {
+                fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
                     use ::serde::Deserialize;
                     let mut deserializer = duktape::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
-                    Self::deserialize(&mut deserializer).unwrap() // TODO
+                    Self::deserialize(&mut deserializer).ok() // TODO
                 }
             }
         }
@@ -166,8 +166,9 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
         .zip(args_names.iter())
         .enumerate()
         .map(|(i, (typ, name))| {
+            let name_str = name.to_string();
             quote!(
-                let #name = ctx.peek::<#typ>(-(1 + #i as i32));
+                let #name = ctx.peek::<#typ>(-(1 + #i as i32)).expect(concat!("failed to peek ", #name_str));
             )
         })
         .collect();
@@ -176,7 +177,6 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
             quote!(
                 use duktape::value::PushValue;
                 result.push_to(ctx);
-                //ctx.push(&result);
             )
         }
         None => quote!(),
@@ -246,7 +246,7 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
                     }
                     #(#args_getters)*
                     ctx.push_this();
-                    let this: #outer_type = ctx.peek(-1);
+                    let this: #outer_type = ctx.peek(-1).expect("failed to peek this");;
                     if #raw_args_count > 0 {
                         ctx.pop_n(#raw_args_count);
                     }

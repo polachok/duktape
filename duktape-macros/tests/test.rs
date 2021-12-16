@@ -30,7 +30,7 @@ fn ret_ref_array() {
     ctx.get_global_str("getData");
     obj.push(&mut ctx);
     ctx.call(1);
-    let res = ctx.peek::<Vec<u8>>(-1);
+    let res = ctx.peek::<Vec<u8>>(-1).unwrap();
     assert_eq!(res, &[0, 1, 2, 3]);
 }
 
@@ -63,7 +63,7 @@ fn ret_ref_buf() {
     ctx.get_global_str("getData");
     obj.push(&mut ctx);
     ctx.call(1);
-    let res = ctx.peek::<Vec<u8>>(-1);
+    let res = ctx.peek::<Vec<u8>>(-1).unwrap();
     assert_eq!(res, &[0, 1, 2, 3]);
 }
 
@@ -96,7 +96,7 @@ fn method() {
     ctx.get_global_str("getData");
     data.push(&mut ctx);
     ctx.call(1);
-    let res = ctx.peek::<String>(-1);
+    let res = ctx.peek::<String>(-1).unwrap();
     println!("method output: {}", res);
     assert_eq!(res, "hello");
 }
@@ -142,11 +142,11 @@ fn adder() {
     let mut ctx = Context::default();
     ctx.push(&1u32);
     ctx.push(&2u32);
-    let a = ctx.peek::<u32>(0);
+    let a = ctx.peek::<u32>(0).unwrap();
     assert_eq!(a, 1u32);
-    let b = ctx.peek::<u32>(1);
+    let b = ctx.peek::<u32>(1).unwrap();
     assert_eq!(b, 2u32);
     ctx.call_function(Bla).unwrap();
-    let rv = ctx.peek::<u32>(-1);
+    let rv = ctx.peek::<u32>(-1).unwrap();
     assert_eq!(3, rv);
 }
