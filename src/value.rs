@@ -14,7 +14,7 @@ pub trait PeekValue: Sized {
     fn pop(ctx: &mut Context) -> Option<Self> {
         let this = Self::peek_at(ctx, -1);
         if this.is_some() {
-            ctx.pop();
+            ctx.pop_it();
         }
         this
     }

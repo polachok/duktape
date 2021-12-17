@@ -4,11 +4,11 @@ use thiserror::Error;
 
 pub struct DuktapeSerializer<'ctx> {
     ctx: &'ctx mut Context,
-    objects: Vec<duktape_sys::duk_idx_t>,
+    objects: Vec<u32>,
 }
 
 pub struct DuktapeSeqSerializer<'a, 'ctx> {
-    obj_id: duktape_sys::duk_idx_t,
+    obj_id: u32,
     inner: &'a mut DuktapeSerializer<'ctx>,
     array_idx: u32,
 }
@@ -238,7 +238,9 @@ impl<'a, 'ctx> ser::SerializeSeq for DuktapeSeqSerializer<'a, 'ctx> {
         T: ?Sized + Serialize,
     {
         value.serialize(&mut *self.inner)?;
-        self.inner.ctx.put_prop_index(self.obj_id, self.array_idx);
+        self.inner
+            .ctx
+            .put_prop_index(self.obj_id.try_into().unwrap(), self.array_idx);
         self.array_idx += 1;
         Ok(())
     }
@@ -361,7 +363,7 @@ impl<'a, 'ctx> ser::SerializeStruct for &'a mut DuktapeSerializer<'ctx> {
     {
         value.serialize(&mut **self)?;
         let obj_id = self.objects.last().unwrap();
-        self.ctx.put_prop_string(*obj_id, key);
+        self.ctx.put_prop_string((*obj_id).try_into().unwrap(), key);
         Ok(())
     }
 
@@ -383,7 +385,7 @@ impl<'a, 'ctx> ser::SerializeStructVariant for &'a mut DuktapeSerializer<'ctx> {
     {
         value.serialize(&mut **self)?;
         let obj_id = self.objects.last().unwrap();
-        self.ctx.put_prop_string(*obj_id, key);
+        self.ctx.put_prop_string((*obj_id).try_into().unwrap(), key);
         Ok(())
     }
 

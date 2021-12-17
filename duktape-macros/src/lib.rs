@@ -31,11 +31,11 @@ impl<'a> quote::ToTokens for PushField<'a> {
                 struct #wrapper_name(#( #serde_attrs )* #ty);
 
                 impl duktape::PushValue for #wrapper_name {
-                    fn push_to(self, ctx: &mut duktape::Context) -> i32 {
+                    fn push_to(self, ctx: &mut duktape::Context) -> u32 {
                         use ::serde::Serialize;
                         let mut serializer = duktape::serialize::DuktapeSerializer::from_ctx(ctx);
                         self.serialize(&mut serializer).unwrap();
-                        -1
+                        ctx.stack_top()
                     }
                 }
 
@@ -204,11 +204,12 @@ pub fn value(input: TokenStream) -> TokenStream {
     let push = if flags & GENERATE_PUSH != 0 {
         quote! {
             impl duktape::PushValue for #ident {
-                fn push_to(self, ctx: &mut duktape::Context) -> i32 {
+                fn push_to(self, ctx: &mut duktape::Context) -> u32 {
+                    use std::convert::TryInto;
                     let idx = ctx.push_object();
                     #(
                         #fields_push;
-                        ctx.put_prop_string(idx, #field_names_str);
+                        ctx.put_prop_string(idx.try_into().unwrap(), #field_names_str);
                     )*
                     idx
                 }
@@ -424,7 +425,8 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
 
         #parsed
 
-        pub fn #register_fn(ctx: &mut duktape::Context, idx: i32, name: &str) {
+        pub fn #register_fn(ctx: &mut duktape::Context, idx: u32, name: &str) {
+            use ::std::convert::TryInto;
             struct #struct_name;
 
             impl duktape::Function for #struct_name {
@@ -455,7 +457,7 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
             }
             //println!("registering method `{}` of {} args", name, #method_args_count);
             ctx.push_function(#struct_name);
-            ctx.put_prop_string(idx, name);
+            ctx.put_prop_string(idx.try_into().unwrap(), name);
             }
         )
     };

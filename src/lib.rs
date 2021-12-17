@@ -47,7 +47,11 @@ impl Context {
     }
 
     pub fn stack_top(&self) -> u32 {
-        unsafe { duktape_sys::duk_get_top_index(self.inner) as u32 }
+        unsafe {
+            duktape_sys::duk_get_top_index(self.inner)
+                .try_into()
+                .unwrap()
+        }
     }
 
     pub fn push<T: PushValue>(&mut self, value: T) -> u32 {
@@ -132,11 +136,11 @@ impl Context {
     }
 
     pub fn push_object(&mut self) -> u32 {
-        unsafe { duktape_sys::duk_push_object(self.inner) as u32 }
+        unsafe { duktape_sys::duk_push_object(self.inner).try_into().unwrap() }
     }
 
     pub fn push_array(&mut self) -> u32 {
-        unsafe { duktape_sys::duk_push_array(self.inner) as u32 }
+        unsafe { duktape_sys::duk_push_array(self.inner).try_into().unwrap() }
     }
 
     pub fn push_null(&mut self) {
