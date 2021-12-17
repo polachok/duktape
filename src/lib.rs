@@ -46,7 +46,11 @@ impl Context {
         unsafe { duktape_sys::duk_get_top(self.inner) }
     }
 
-    pub fn push<T: PushValue>(&mut self, value: T) -> duktape_sys::duk_idx_t {
+    pub fn stack_top(&self) -> u32 {
+        unsafe { duktape_sys::duk_get_top_index(self.inner) as u32 }
+    }
+
+    pub fn push<T: PushValue>(&mut self, value: T) -> u32 {
         value.push_to(self)
     }
 
@@ -127,12 +131,12 @@ impl Context {
         };
     }
 
-    pub fn push_object(&mut self) -> duktape_sys::duk_idx_t {
-        unsafe { duktape_sys::duk_push_object(self.inner) }
+    pub fn push_object(&mut self) -> u32 {
+        unsafe { duktape_sys::duk_push_object(self.inner) as u32 }
     }
 
-    pub fn push_array(&mut self) -> duktape_sys::duk_idx_t {
-        unsafe { duktape_sys::duk_push_array(self.inner) }
+    pub fn push_array(&mut self) -> u32 {
+        unsafe { duktape_sys::duk_push_array(self.inner) as u32 }
     }
 
     pub fn push_null(&mut self) {
@@ -195,16 +199,18 @@ impl Context {
         }
     }
 
-    pub fn pop(&mut self) {
+    fn pop_it(&mut self) {
         unsafe {
             duktape_sys::duk_pop(self.inner);
         }
     }
 
+    pub fn pop(&mut self) {
+        self.pop_value::<()>();
+    }
+
     pub fn pop_value<T: PeekValue>(&mut self) -> Option<T> {
-        let value = self.peek(-1);
-        self.pop();
-        value
+        T::pop(self)
     }
 
     pub fn pop_n(&mut self, n: i32) {

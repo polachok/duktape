@@ -10,7 +10,7 @@ fn ret_ref_array() {
     }
 
     impl Obj {
-        #[duktape(Obj)]
+        #[duktape(this = "Obj")]
         fn get_data(&self) -> &[u8] {
             &self.data[..]
         }
@@ -44,7 +44,7 @@ fn ret_ref_buf() {
     }
 
     impl Obj {
-        #[duktape(Obj)]
+        #[duktape(this = "Obj")]
         fn get_data(&self) -> &[u8] {
             &self.data[..]
         }
@@ -77,7 +77,7 @@ fn method() {
     }
 
     impl Obj {
-        #[duktape(Obj)]
+        #[duktape(this = "Obj")]
         fn return_data(&self) -> String {
             self.data.clone()
         }

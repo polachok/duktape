@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
+use syn::parse::Parse;
 use syn::{Ident, ItemFn};
 
 struct FieldMeta {
@@ -243,9 +244,55 @@ pub fn value(input: TokenStream) -> TokenStream {
     res.into()
 }
 
+struct Args {
+    this: Option<Ident>,
+    vararg: bool,
+}
+
+struct KV {
+    name: Ident,
+    value: Option<String>,
+}
+
+impl Parse for KV {
+    fn parse(input: syn::parse::ParseStream) -> syn::parse::Result<Self> {
+        let name = Ident::parse(input)?;
+        let value = if let Ok(_) = syn::token::Eq::parse(input) {
+            let lit = syn::Lit::parse(input)?;
+            match lit {
+                syn::Lit::Str(str) => Some(str.value()),
+                _ => panic!(),
+            }
+        } else {
+            None
+        };
+        Ok(KV { name, value })
+    }
+}
+
+impl Parse for Args {
+    fn parse(input: syn::parse::ParseStream) -> syn::parse::Result<Self> {
+        let vars = syn::punctuated::Punctuated::<KV, syn::Token![,]>::parse_terminated(input)?;
+        let mut this = None;
+        let mut vararg = false;
+        for var in vars {
+            match var.name.to_string().as_str() {
+                "this" => this = Some(Ident::new(&var.value.unwrap(), Span::call_site())),
+                "vararg" => {
+                    vararg = true;
+                }
+                attr => {
+                    panic!("unknown attribute {}", attr);
+                }
+            }
+        }
+        Ok(Args { this, vararg })
+    }
+}
+
 #[proc_macro_attribute]
 pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let parsed_attr: Option<Ident> = syn::parse_macro_input!(attr);
+    let parsed_attr = syn::parse_macro_input!(attr as Args);
     //println!("attrs: {:?}", parsed_attr);
     let parsed: ItemFn = syn::parse_macro_input!(input);
     let mut args = Vec::new();
@@ -324,11 +371,16 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let bare_func = {
+        let func_args_count = if parsed_attr.vararg {
+            -1
+        } else {
+            raw_args_count
+        };
         quote!(
             struct #struct_name;
 
             impl duktape::Function for #struct_name {
-                const ARGS: i32 = #raw_args_count;
+                const ARGS: i32 = #func_args_count;
 
                 fn ptr(&self) -> unsafe extern "C" fn(*mut ::duktape_sys::duk_context) -> i32 {
                     Self::#fn_name
@@ -358,11 +410,16 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
     let res = if !is_method {
         bare_func
     } else {
+        let method_args_count = if parsed_attr.vararg {
+            -1
+        } else {
+            raw_args_count + 1 /* self */
+        };
         let register_fn = Ident::new(
             &format!("register_{}", fn_name.to_string()),
             Span::call_site(),
         );
-        let outer_type = parsed_attr.unwrap();
+        let outer_type = parsed_attr.this.unwrap();
         quote!(
 
         #parsed
@@ -371,7 +428,7 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
             struct #struct_name;
 
             impl duktape::Function for #struct_name {
-                const ARGS: i32 = #raw_args_count;
+                const ARGS: i32 = #method_args_count;
 
                 fn ptr(&self) -> unsafe extern "C" fn(*mut ::duktape_sys::duk_context) -> i32 {
                     Self::#fn_name
@@ -382,20 +439,21 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
                 pub unsafe extern "C" fn #fn_name(raw: *mut ::duktape_sys::duk_context) -> i32 {
                     let ctx = &mut duktape::Context::from_raw(raw);
                     let n = ctx.stack_len();
-                    if n < #raw_args_count {
+                    if n < #method_args_count {
                         return -1;
                     }
                     #(#args_getters)*
                     ctx.push_this();
                     let this: #outer_type = ctx.peek(-1).expect("failed to peek this");;
-                    if #raw_args_count > 0 {
-                        ctx.pop_n(#raw_args_count);
+                    if #method_args_count > 0 {
+                        ctx.pop_n(#method_args_count);
                     }
                     let result = this.#fn_name(#(#args_names),*);
                     #push_result
                     #return_count
                 }
             }
+            //println!("registering method `{}` of {} args", name, #method_args_count);
             ctx.push_function(#struct_name);
             ctx.put_prop_string(idx, name);
             }
