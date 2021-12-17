@@ -76,7 +76,7 @@ pub fn value(input: TokenStream) -> TokenStream {
     let push = if flags & GENERATE_PUSH != 0 {
         quote! {
             impl duktape::PushValue for #ident {
-                fn push_to(&self, ctx: &mut duktape::Context) -> i32 {
+                fn push_to(self, ctx: &mut duktape::Context) -> i32 {
                     use ::serde::Serialize;
                     let mut serializer = duktape::serialize::DuktapeSerializer::from_ctx(ctx);
                     self.serialize(&mut serializer).unwrap(); // TODO

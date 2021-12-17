@@ -7,6 +7,13 @@ pub use value::{PeekValue, PushValue};
 pub mod serialize;
 pub mod value;
 
+#[macro_export]
+macro_rules! hidden_prop {
+    ($prop: literal) => {
+        concat!(b"\0xff", b$literal)
+    };
+}
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("{}", .0)]
@@ -39,7 +46,7 @@ impl Context {
         unsafe { duktape_sys::duk_get_top(self.inner) }
     }
 
-    pub fn push<T: PushValue>(&mut self, value: &T) -> duktape_sys::duk_idx_t {
+    pub fn push<T: PushValue>(&mut self, value: T) -> duktape_sys::duk_idx_t {
         value.push_to(self)
     }
 
@@ -294,7 +301,7 @@ impl Context {
         unsafe { duktape_sys::duk_get_length(self.inner, idx) as usize }
     }
 
-    pub fn get_prop(&mut self, name: &str, idx: duktape_sys::duk_idx_t) -> bool {
+    pub fn get_prop(&mut self, idx: duktape_sys::duk_idx_t, name: &str) -> bool {
         unsafe {
             duktape_sys::duk_get_prop_lstring(
                 self.inner,
@@ -462,7 +469,7 @@ mod tests {
         let mut ctx = Context::default();
         ctx.push_function(Print);
         ctx.push(&t);
-        ctx.call(1);
+        ctx.call(1).unwrap();
 
         //ctx.eval("print('hello', 1);");
         //ctx.pop();

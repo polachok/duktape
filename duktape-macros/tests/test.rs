@@ -16,7 +16,7 @@ fn ret_ref_array() {
         }
 
         fn push(&self, ctx: &mut Context) {
-            let idx = ctx.push(&self.push_value());
+            let idx = ctx.push(self.push_value());
             Self::register_get_data(ctx, idx, "getData");
         }
     }
@@ -29,7 +29,7 @@ fn ret_ref_array() {
         .unwrap();
     ctx.get_global_str("getData");
     obj.push(&mut ctx);
-    ctx.call(1);
+    ctx.call(1).unwrap();
     let res = ctx.peek::<Vec<u8>>(-1).unwrap();
     assert_eq!(res, &[0, 1, 2, 3]);
 }
@@ -62,7 +62,7 @@ fn ret_ref_buf() {
         .unwrap();
     ctx.get_global_str("getData");
     obj.push(&mut ctx);
-    ctx.call(1);
+    ctx.call(1).unwrap();
     let res = ctx.peek::<Vec<u8>>(-1).unwrap();
     assert_eq!(res, &[0, 1, 2, 3]);
 }
@@ -95,7 +95,7 @@ fn method() {
         .unwrap();
     ctx.get_global_str("getData");
     data.push(&mut ctx);
-    ctx.call(1);
+    ctx.call(1).unwrap();
     let res = ctx.peek::<String>(-1).unwrap();
     println!("method output: {}", res);
     assert_eq!(res, "hello");
@@ -132,6 +132,7 @@ fn generics() {
     }
 }
 
+#[test]
 fn arrays() {
     #[duktape]
     fn bla(_ctx: &mut Context, _data: Vec<u8>) -> [u8; 20] {

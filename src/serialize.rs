@@ -1,5 +1,5 @@
 use super::Context;
-use serde::{de::Visitor, ser, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Visitor, ser, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 pub struct DuktapeSerializer<'ctx> {
@@ -724,7 +724,7 @@ impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeStructDeserializer<'ctx> {
         T: serde::de::DeserializeSeed<'de>,
     {
         if let Some(prop_name) = self.fields.get(self.idx) {
-            if !self.ctx.get_prop(prop_name, -1) {
+            if !self.ctx.get_prop(-1, prop_name) {
                 return Err(Error::Message("incorrect field".to_string()));
             }
             let mut deserializer = DuktapeDeserializer::from_ctx(&mut *self.ctx, -1);
@@ -737,26 +737,30 @@ impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeStructDeserializer<'ctx> {
     }
 }
 
-#[test]
-fn deserialize_num() {
-    let mut ctx = super::Context::default();
-    ctx.push(&42.0f64);
-    assert_eq!(ctx.peek::<f64>(-1).unwrap(), 42.0f64);
-}
-
-#[test]
-fn deserialize_obj() {
-    let mut ctx = super::Context::default();
-    #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-    struct T {
-        hello: String,
-        num: u32,
+#[cfg(test)]
+mod tests {
+    use serde::{Deserialize, Serialize};
+    #[test]
+    fn deserialize_num() {
+        let mut ctx = super::Context::default();
+        ctx.push(&42.0f64);
+        assert_eq!(ctx.peek::<f64>(-1).unwrap(), 42.0f64);
     }
-    let t1 = T {
-        hello: "world".to_string(),
-        num: 42,
-    };
-    ctx.push(&crate::value::SerdeValue(&t1));
-    let t2: crate::value::SerdeValue<T> = ctx.peek(0).unwrap();
-    assert_eq!(t1, t2.0);
+
+    #[test]
+    fn deserialize_obj() {
+        let mut ctx = super::Context::default();
+        #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+        struct T {
+            hello: String,
+            num: u32,
+        }
+        let t1 = T {
+            hello: "world".to_string(),
+            num: 42,
+        };
+        ctx.push(&crate::value::SerdeValue(&t1));
+        let t2: crate::value::SerdeValue<T> = ctx.peek(0).unwrap();
+        assert_eq!(t1, t2.0);
+    }
 }

@@ -4,7 +4,7 @@ use crate::Context;
 use serde::{Deserialize, Serialize};
 
 pub trait PushValue {
-    fn push_to(&self, ctx: &mut Context) -> i32;
+    fn push_to(self, ctx: &mut Context) -> i32;
 }
 
 pub trait PeekValue: Sized {
@@ -26,7 +26,7 @@ impl<'a, T: ?Sized> PushValue for SerdeValue<&'a T>
 where
     T: Serialize,
 {
-    fn push_to(&self, ctx: &mut Context) -> i32 {
+    fn push_to(self, ctx: &mut Context) -> i32 {
         let mut serializer = serialize::DuktapeSerializer::from_ctx(ctx);
         self.serialize(&mut serializer).unwrap(); // TODO
         ctx.stack_len() - 1
@@ -46,7 +46,7 @@ where
 macro_rules! via_serde {
     ($t: ty) => {
         impl PushValue for $t {
-            fn push_to(&self, ctx: &mut Context) -> i32 {
+            fn push_to(self, ctx: &mut Context) -> i32 {
                 let v = SerdeValue(self);
                 v.push_to(ctx)
             }
@@ -74,7 +74,7 @@ via_serde!(f64);
 via_serde!(String);
 
 impl<T: PushValue> PushValue for Option<T> {
-    fn push_to(&self, ctx: &mut Context) -> i32 {
+    fn push_to(self, ctx: &mut Context) -> i32 {
         let idx = match self {
             Some(v) => v.push_to(ctx),
             None => {
@@ -102,12 +102,12 @@ where
     }
 }
 
-impl<T> PushValue for [T]
+impl<'a, T> PushValue for &'a [T]
 where
     T: Serialize,
 {
-    fn push_to(&self, ctx: &mut Context) -> i32 {
-        let v = SerdeValue(self);
+    fn push_to(self, ctx: &mut Context) -> i32 {
+        let v = SerdeValue(&self);
         v.push_to(ctx)
     }
 }
@@ -116,8 +116,8 @@ impl<T> PushValue for &T
 where
     T: Serialize,
 {
-    fn push_to(&self, ctx: &mut Context) -> i32 {
-        let v = SerdeValue(*self);
+    fn push_to(self, ctx: &mut Context) -> i32 {
+        let v = SerdeValue(self);
         v.push_to(ctx)
     }
 }
