@@ -38,6 +38,7 @@ fn ret_ref_array() {
 fn ret_ref_buf() {
     #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
     pub struct Obj {
+        #[data]
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
     }

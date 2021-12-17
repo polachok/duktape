@@ -3,10 +3,128 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::{Ident, ItemFn};
 
-#[proc_macro_derive(Value, attributes(duktape))]
+struct FieldMeta {
+    name: Ident,
+    ty: syn::Type,
+    is_data: bool,
+    serde_attrs: Vec<syn::Attribute>,
+}
+
+struct PushField<'a>(&'a FieldMeta);
+struct PeekField<'a>(&'a FieldMeta);
+
+impl<'a> quote::ToTokens for PushField<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.0.name;
+        let q = if self.0.is_data {
+            let wrapper_name = Ident::new(
+                &format!("{}Wrapper", self.0.name.to_string()),
+                Span::call_site(),
+            );
+            let serde_attrs = &self.0.serde_attrs;
+            let ty = &self.0.ty;
+
+            quote! {
+                {
+                #[derive(serde::Serialize, serde::Deserialize)]
+                struct #wrapper_name(#( #serde_attrs )* #ty);
+
+                impl duktape::PushValue for #wrapper_name {
+                    fn push_to(self, ctx: &mut duktape::Context) -> i32 {
+                        use ::serde::Serialize;
+                        let mut serializer = duktape::serialize::DuktapeSerializer::from_ctx(ctx);
+                        self.serialize(&mut serializer).unwrap();
+                        -1
+                    }
+                }
+
+                #wrapper_name(self.#name).push_to(ctx)
+                }
+            }
+        } else {
+            quote! {
+                self.#name.push_to(ctx)
+            }
+        };
+        tokens.extend(q);
+    }
+}
+
+impl<'a> quote::ToTokens for PeekField<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let ty = &self.0.ty;
+        let q = if self.0.is_data {
+            let wrapper_name = Ident::new(
+                &format!("{}Wrapper", self.0.name.to_string()),
+                Span::call_site(),
+            );
+            let serde_attrs = &self.0.serde_attrs;
+
+            quote! {
+                {
+                    #[derive(serde::Serialize, serde::Deserialize)]
+                    struct #wrapper_name(#( #serde_attrs )* #ty);
+
+                    impl duktape::PeekValue for #wrapper_name {
+                        fn peek_at(ctx: &mut duktape::Context, idx: i32) -> Option<Self> {
+                            use ::serde::Deserialize;
+                            let mut serializer = duktape::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
+                            Self::deserialize(&mut serializer).ok()
+                        }
+                    }
+
+                    <#wrapper_name>::peek_at(ctx, idx).map(|w| w.0)
+                }
+            }
+        } else {
+            quote! {
+                <#ty>::peek_at(ctx, idx)
+            }
+        };
+        tokens.extend(q);
+    }
+}
+
+#[proc_macro_derive(Value, attributes(duktape, data))]
 pub fn value(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let ident = input.ident.clone();
+    let fields = match input.data {
+        syn::Data::Struct(data) => data.fields,
+        _ => todo!("not (yet) supported"),
+    };
+    let mut fields_meta = Vec::new();
+    match fields {
+        syn::Fields::Named(named_fields) => {
+            for field in named_fields.named {
+                let mut serde_attrs = Vec::new();
+                let mut is_data = false;
+                for attr in field.attrs {
+                    if let Ok(meta) = attr.parse_meta() {
+                        if let Some(ident) = meta.path().get_ident() {
+                            match ident.to_string().as_str() {
+                                "serde" => {
+                                    serde_attrs.push(attr);
+                                }
+                                "data" => {
+                                    is_data = true;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                fields_meta.push(FieldMeta {
+                    name: field.ident.expect("named field").clone(),
+                    ty: field.ty.clone(),
+                    is_data,
+                    serde_attrs,
+                });
+            }
+        }
+        _ => todo!("not (yet) supported"),
+    }
+
     let options = input
         .attrs
         .iter()
@@ -42,6 +160,7 @@ pub fn value(input: TokenStream) -> TokenStream {
     const GENERATE_PUSH: u8 = 2;
     const GENERATE_AS_SERIALIZE: u8 = 4;
     const DEFAULT: u8 = GENERATE_PEEK | GENERATE_PUSH | GENERATE_AS_SERIALIZE;
+
     let flags = if options.is_empty() {
         DEFAULT
     } else {
@@ -73,14 +192,24 @@ pub fn value(input: TokenStream) -> TokenStream {
         quote!()
     };
 
+    let field_names: Vec<_> = fields_meta.iter().map(|meta| meta.name.clone()).collect();
+    let field_names_str: Vec<_> = fields_meta
+        .iter()
+        .map(|meta| meta.name.to_string())
+        .collect();
+    let fields_push: Vec<_> = fields_meta.iter().map(|meta| PushField(meta)).collect();
+    let fields_peek: Vec<_> = fields_meta.iter().map(|meta| PeekField(meta)).collect();
+
     let push = if flags & GENERATE_PUSH != 0 {
         quote! {
             impl duktape::PushValue for #ident {
                 fn push_to(self, ctx: &mut duktape::Context) -> i32 {
-                    use ::serde::Serialize;
-                    let mut serializer = duktape::serialize::DuktapeSerializer::from_ctx(ctx);
-                    self.serialize(&mut serializer).unwrap(); // TODO
-                    ctx.stack_len() - 1
+                    let idx = ctx.push_object();
+                    #(
+                        #fields_push;
+                        ctx.put_prop_string(idx, #field_names_str);
+                    )*
+                    idx
                 }
             }
         }
@@ -91,9 +220,18 @@ pub fn value(input: TokenStream) -> TokenStream {
         quote! {
             impl duktape::PeekValue for #ident {
                 fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
-                    use ::serde::Deserialize;
-                    let mut deserializer = duktape::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
-                    Self::deserialize(&mut deserializer).ok() // TODO
+                    ctx.get_object(idx);
+                    #(
+                        if !ctx.get_prop(idx, #field_names_str) {
+                            return None;
+                        }
+                        let #field_names = #fields_peek?;
+                        ctx.pop();
+
+                    )*
+                    Some(Self {
+                        #( # field_names ),*
+                    })
                 }
             }
         }
@@ -101,7 +239,7 @@ pub fn value(input: TokenStream) -> TokenStream {
         quote!()
     };
     let res = quote!( #peek #push #ser );
-    //println!("{}", res);
+    //println!(">>> {}", res);
     res.into()
 }
 
