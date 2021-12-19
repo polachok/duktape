@@ -168,6 +168,26 @@ where
     }
 }
 
+impl<T, const N: usize> PushValue for [T; N]
+where
+    T: Serialize,
+{
+    fn push_to(self, ctx: &mut Context) -> u32 {
+        let v = SerdeValue(self.as_slice());
+        v.push_to(ctx)
+    }
+}
+
+impl<'de, T, const N: usize> PeekValue for [T; N]
+where
+    T: Deserialize<'de>,
+    [T; N]: Deserialize<'de>,
+{
+    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
+        SerdeValue::peek_at(ctx, idx).map(|v| v.0)
+    }
+}
+
 impl<'a, T> PushValue for &'a [T]
 where
     T: Serialize,
