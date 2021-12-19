@@ -19,8 +19,8 @@ fn main() {
         // bindings for.
         .header("wrapper.h")
         .clang_arg("-I./c")
-        .whitelist_var("DUK_(.*)")
-        .whitelist_function("duk_(.*)")
+        .allowlist_var("DUK_(.*)")
+        .allowlist_function("duk_(.*)")
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
