@@ -145,6 +145,8 @@ fn arrays() {
 fn adder() {
     #[duktape]
     fn bla(_ctx: &mut Context, a: u32, b: u32) -> u32 {
+        assert_eq!(a, 1);
+        assert_eq!(b, 2);
         a + b
     }
 

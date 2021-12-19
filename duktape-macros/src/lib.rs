@@ -160,7 +160,7 @@ pub fn value(input: TokenStream) -> TokenStream {
     const GENERATE_PEEK: u8 = 1;
     const GENERATE_PUSH: u8 = 2;
     const GENERATE_AS_SERIALIZE: u8 = 4;
-    const DEFAULT: u8 = GENERATE_PEEK | GENERATE_PUSH | GENERATE_AS_SERIALIZE;
+    const DEFAULT: u8 = GENERATE_PEEK | GENERATE_PUSH;
 
     let flags = if options.is_empty() {
         DEFAULT
@@ -356,8 +356,9 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
         .enumerate()
         .map(|(i, (typ, name))| {
             let name_str = name.to_string();
+            let arg_idx = -(args_count as i32) + i as i32;
             quote!(
-                let #name = ctx.peek::<#typ>(-(1 + #i as i32)).expect(concat!("failed to peek ", #name_str));
+                let #name = ctx.peek::<#typ>(#arg_idx).expect(concat!("failed to peek ", #name_str));
             )
         })
         .collect();
