@@ -2,6 +2,15 @@ use duktape::Context;
 use duktape_macros::*;
 
 #[test]
+fn test_hidden() {
+    #[derive(Value)]
+    pub struct Obj {
+        #[hidden]
+        data: Vec<u8>,
+    }
+}
+
+#[test]
 fn ret_ref_array() {
     #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
     #[duktape(Peek, Push, Serialize)]

@@ -7,13 +7,6 @@ pub use value::{PeekValue, PushValue};
 pub mod serialize;
 pub mod value;
 
-#[macro_export]
-macro_rules! hidden_prop {
-    ($prop: literal) => {
-        concat!(b"\0xff", b$literal)
-    };
-}
-
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("{}", .0)]
@@ -125,6 +118,17 @@ impl Context {
     }
 
     pub fn put_prop_string(&mut self, obj_id: duktape_sys::duk_idx_t, val: &str) {
+        unsafe {
+            duktape_sys::duk_put_prop_lstring(
+                self.inner,
+                obj_id,
+                val.as_ptr() as *const i8,
+                val.len() as u64,
+            )
+        };
+    }
+
+    pub fn put_prop_bytes(&mut self, obj_id: duktape_sys::duk_idx_t, val: &[u8]) {
         unsafe {
             duktape_sys::duk_put_prop_lstring(
                 self.inner,

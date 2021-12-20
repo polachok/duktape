@@ -8,6 +8,7 @@ struct FieldMeta {
     name: Ident,
     ty: syn::Type,
     is_data: bool,
+    is_hidden: bool,
     serde_attrs: Vec<syn::Attribute>,
 }
 
@@ -17,6 +18,17 @@ struct PeekField<'a>(&'a FieldMeta);
 impl<'a> quote::ToTokens for PushField<'a> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let name = &self.0.name;
+        let prop_name = if self.0.is_hidden {
+            let name = name.to_string();
+            let mut buf = Vec::new();
+            buf.push(0xff);
+            buf.extend_from_slice(name.as_bytes());
+            let name = syn::LitByteStr::new(&buf, Span::call_site());
+            quote!(#name)
+        } else {
+            let name = name.to_string();
+            quote!(#name.as_bytes())
+        };
         let q = if self.0.is_data {
             let wrapper_name = Ident::new(
                 &format!("{}Wrapper", self.0.name.to_string()),
@@ -39,12 +51,14 @@ impl<'a> quote::ToTokens for PushField<'a> {
                     }
                 }
 
-                #wrapper_name(self.#name).push_to(ctx)
+                #wrapper_name(self.#name).push_to(ctx);
+                ctx.put_prop_bytes(idx.try_into().unwrap(), #prop_name);
                 }
             }
         } else {
             quote! {
-                self.#name.push_to(ctx)
+                self.#name.push_to(ctx);
+                ctx.put_prop_bytes(idx.try_into().unwrap(), #prop_name);
             }
         };
         tokens.extend(q);
@@ -86,7 +100,7 @@ impl<'a> quote::ToTokens for PeekField<'a> {
     }
 }
 
-#[proc_macro_derive(Value, attributes(duktape, data))]
+#[proc_macro_derive(Value, attributes(duktape, data, hidden))]
 pub fn value(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let ident = input.ident.clone();
@@ -100,6 +114,7 @@ pub fn value(input: TokenStream) -> TokenStream {
             for field in named_fields.named {
                 let mut serde_attrs = Vec::new();
                 let mut is_data = false;
+                let mut is_hidden = false;
                 for attr in field.attrs {
                     if let Ok(meta) = attr.parse_meta() {
                         if let Some(ident) = meta.path().get_ident() {
@@ -110,6 +125,9 @@ pub fn value(input: TokenStream) -> TokenStream {
                                 "data" => {
                                     is_data = true;
                                 }
+                                "hidden" => {
+                                    is_hidden = true;
+                                }
                                 _ => {}
                             }
                         }
@@ -119,6 +137,7 @@ pub fn value(input: TokenStream) -> TokenStream {
                     name: field.ident.expect("named field").clone(),
                     ty: field.ty.clone(),
                     is_data,
+                    is_hidden,
                     serde_attrs,
                 });
             }
@@ -208,8 +227,7 @@ pub fn value(input: TokenStream) -> TokenStream {
                     use std::convert::TryInto;
                     let idx = ctx.push_object();
                     #(
-                        #fields_push;
-                        ctx.put_prop_string(idx.try_into().unwrap(), #field_names_str);
+                        #fields_push
                     )*
                     idx
                 }
