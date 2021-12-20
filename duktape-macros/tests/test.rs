@@ -2,6 +2,25 @@ use duktape::Context;
 use duktape_macros::*;
 
 #[test]
+fn test_methods() {
+    #[derive(Value)]
+    #[duktape(Peek, Push, Methods("toString", "toInt"))]
+    pub struct Obj {}
+
+    impl Obj {
+        #[duktape(this = "Obj")]
+        fn to_int(&self) -> u32 {
+            0
+        }
+
+        #[duktape(this = "Obj")]
+        fn to_string(&self) -> String {
+            String::new()
+        }
+    }
+}
+
+#[test]
 fn test_hidden() {
     #[derive(Value)]
     pub struct Obj {

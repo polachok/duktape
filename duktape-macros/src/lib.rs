@@ -145,6 +145,11 @@ pub fn value(input: TokenStream) -> TokenStream {
         _ => todo!("not (yet) supported"),
     }
 
+    enum Option {
+        Single(Ident),
+        Methods(Vec<String>),
+    }
+
     let options = input
         .attrs
         .iter()
@@ -160,44 +165,75 @@ pub fn value(input: TokenStream) -> TokenStream {
             syn::Meta::List(list) => Some(list),
             _ => None,
         })
-        .map(|list| {
-            let mut idents = vec![];
-            for val in list.nested {
-                match val {
-                    syn::NestedMeta::Meta(meta) => match meta {
-                        syn::Meta::Path(path) => idents.push(path.get_ident().unwrap().clone()),
-                        _ => {}
-                    },
-                    syn::NestedMeta::Lit(_) => {}
-                }
+        .flat_map(|list| list.nested)
+        .flat_map(|val| {
+            match val {
+                syn::NestedMeta::Meta(meta) => match meta {
+                    syn::Meta::Path(path) => {
+                        return Some(Option::Single(path.get_ident().unwrap().clone()))
+                    }
+                    syn::Meta::List(list) => {
+                        let mut methods = vec![];
+                        for meta in list.nested {
+                            match meta {
+                                syn::NestedMeta::Meta(_meta) => {
+                                    panic!("unexpected");
+                                }
+                                syn::NestedMeta::Lit(lit) => match lit {
+                                    syn::Lit::Str(s) => methods.push(s.value()),
+                                    _ => {}
+                                },
+                            }
+                        }
+                        return Some(Option::Methods(methods));
+                    }
+                    _ => {}
+                },
+                syn::NestedMeta::Lit(_) => {}
             }
-            idents
+            None
         })
-        .flatten()
-        .collect::<Vec<Ident>>();
+        .collect::<Vec<Option>>();
 
     const GENERATE_PEEK: u8 = 1;
     const GENERATE_PUSH: u8 = 2;
     const GENERATE_AS_SERIALIZE: u8 = 4;
     const DEFAULT: u8 = GENERATE_PEEK | GENERATE_PUSH;
 
-    let flags = if options.is_empty() {
-        DEFAULT
+    let (flags, methods) = if options.is_empty() {
+        (DEFAULT, Vec::new())
     } else {
         let mut flags = 0;
+        let mut methods = vec![];
         for option in &options {
-            flags |= match option.to_string().as_str() {
-                "Peek" => GENERATE_PEEK,
-                "Push" => GENERATE_PUSH,
-                "Serialize" => GENERATE_AS_SERIALIZE,
-                val => panic!(
-                    "unknown attribute value: {}, expected Peek, Push, Serialize",
-                    val
-                ),
+            match option {
+                Option::Single(option) => {
+                    flags |= match option.to_string().as_str() {
+                        "Peek" => GENERATE_PEEK,
+                        "Push" => GENERATE_PUSH,
+                        "Serialize" => GENERATE_AS_SERIALIZE,
+                        val => panic!(
+                            "unknown attribute value: {}, expected Peek, Push, Serialize",
+                            val
+                        ),
+                    }
+                }
+                Option::Methods(ms) => {
+                    methods = ms.to_vec();
+                }
             }
         }
-        flags
+        (flags, methods)
     };
+
+    let methods = methods.into_iter().map(|name| {
+        let register = format!("register_{}", inflections::case::to_snake_case(&name));
+        let register = Ident::new(&register, Span::call_site());
+
+        quote! {
+            Self::#register(ctx, idx, #name);
+        }
+    });
 
     let ser = if flags & GENERATE_AS_SERIALIZE != 0 {
         quote! {
@@ -228,6 +264,9 @@ pub fn value(input: TokenStream) -> TokenStream {
                     let idx = ctx.push_object();
                     #(
                         #fields_push
+                    )*
+                    #(
+                        #methods
                     )*
                     idx
                 }
