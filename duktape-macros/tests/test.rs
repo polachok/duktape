@@ -3,9 +3,14 @@ use duktape_macros::*;
 
 #[test]
 fn test_methods() {
+    use duktape::{PeekValue, PushValue};
+    use std::rc::Rc;
+
     #[derive(Value)]
     #[duktape(Peek, Push, Methods("toString", "toInt"))]
-    pub struct Obj {}
+    pub struct Obj {
+        t: Rc<Vec<u8>>,
+    }
 
     impl Obj {
         #[duktape(this = "Obj")]
@@ -18,6 +23,12 @@ fn test_methods() {
             String::new()
         }
     }
+    let mut ctx = Context::default();
+    let obj = Obj {
+        t: Rc::new(Vec::new()),
+    };
+    let idx = obj.push_to(&mut ctx);
+    let obj = Obj::peek_at(&mut ctx, idx as i32).unwrap();
 }
 
 #[test]

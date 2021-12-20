@@ -62,7 +62,17 @@ macro_rules! via_serde {
     };
 }
 
-via_serde!(());
+impl PeekValue for () {
+    fn peek_at(_ctx: &mut Context, _idx: i32) -> Option<Self> {
+        Some(())
+    }
+
+    fn pop(ctx: &mut Context) -> Option<Self> {
+        ctx.pop_it();
+        Some(())
+    }
+}
+
 via_serde!(bool);
 via_serde!(u8);
 via_serde!(u16);

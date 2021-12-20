@@ -88,12 +88,12 @@ impl<'a> quote::ToTokens for PeekField<'a> {
                         }
                     }
 
-                    <#wrapper_name>::peek_at(ctx, idx).map(|w| w.0)
+                    <#wrapper_name>::peek_at(ctx, -1).map(|w| w.0)
                 }
             }
         } else {
             quote! {
-                <#ty>::peek_at(ctx, idx)
+                <#ty>::peek_at(ctx, -1)
             }
         };
         tokens.extend(q);
@@ -286,7 +286,6 @@ pub fn value(input: TokenStream) -> TokenStream {
                         }
                         let #field_names = #fields_peek?;
                         ctx.pop();
-
                     )*
                     Some(Self {
                         #( # field_names ),*
