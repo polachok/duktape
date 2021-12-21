@@ -40,6 +40,7 @@ fn test_hidden() {
     }
 }
 
+/*
 #[test]
 fn ret_ref_array() {
     #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
@@ -200,3 +201,4 @@ fn adder() {
     let rv = ctx.peek::<u32>(-1).unwrap();
     assert_eq!(3, rv);
 }
+*/

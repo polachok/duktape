@@ -12,13 +12,10 @@ struct FieldMeta {
     serde_attrs: Vec<syn::Attribute>,
 }
 
-struct PushField<'a>(&'a FieldMeta);
-struct PeekField<'a>(&'a FieldMeta);
-
-impl<'a> quote::ToTokens for PushField<'a> {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let name = &self.0.name;
-        let prop_name = if self.0.is_hidden {
+impl FieldMeta {
+    fn prop_name(&self) -> proc_macro2::TokenStream {
+        let name = &self.name;
+        if self.is_hidden {
             let name = name.to_string();
             let mut buf = Vec::new();
             buf.push(0xff);
@@ -28,7 +25,17 @@ impl<'a> quote::ToTokens for PushField<'a> {
         } else {
             let name = name.to_string();
             quote!(#name.as_bytes())
-        };
+        }
+    }
+}
+
+struct PushField<'a>(&'a FieldMeta);
+struct PeekField<'a>(&'a FieldMeta);
+
+impl<'a> quote::ToTokens for PushField<'a> {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.0.name;
+        let prop_name = self.0.prop_name();
         let q = if self.0.is_data {
             let wrapper_name = Ident::new(
                 &format!("{}Wrapper", self.0.name.to_string()),
@@ -81,19 +88,19 @@ impl<'a> quote::ToTokens for PeekField<'a> {
                     struct #wrapper_name(#( #serde_attrs )* #ty);
 
                     impl duktape::PeekValue for #wrapper_name {
-                        fn peek_at(ctx: &mut duktape::Context, idx: i32) -> Option<Self> {
+                        fn peek_at(ctx: &mut duktape::Context, idx: i32) -> Result<Self, duktape::value::PeekError> {
                             use ::serde::Deserialize;
                             let mut serializer = duktape::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
-                            Self::deserialize(&mut serializer).ok()
+                            Self::deserialize(&mut serializer).map_err(Into::into)
                         }
                     }
 
-                    <#wrapper_name>::peek_at(ctx, -1).map(|w| w.0)
+                    ctx.pop_value::<#wrapper_name>().map(|w| w.0)
                 }
             }
         } else {
             quote! {
-                <#ty>::peek_at(ctx, -1)
+               ctx.pop_value::<#ty>()
             }
         };
         tokens.extend(q);
@@ -234,6 +241,13 @@ pub fn value(input: TokenStream) -> TokenStream {
             Self::#register(ctx, idx, #name);
         }
     });
+    let register_all_methods = quote! {
+        impl #ident {
+            fn register_methods(ctx: &mut duktape::Context, idx: u32) {
+                #( #methods )*
+            }
+        }
+    };
 
     let ser = if flags & GENERATE_AS_SERIALIZE != 0 {
         quote! {
@@ -253,6 +267,7 @@ pub fn value(input: TokenStream) -> TokenStream {
         .iter()
         .map(|meta| meta.name.to_string())
         .collect();
+    let prop_names_str: Vec<_> = fields_meta.iter().map(|meta| meta.prop_name()).collect();
     let fields_push: Vec<_> = fields_meta.iter().map(|meta| PushField(meta)).collect();
     let fields_peek: Vec<_> = fields_meta.iter().map(|meta| PeekField(meta)).collect();
 
@@ -265,9 +280,7 @@ pub fn value(input: TokenStream) -> TokenStream {
                     #(
                         #fields_push
                     )*
-                    #(
-                        #methods
-                    )*
+                    Self::register_methods(ctx, idx);
                     idx
                 }
             }
@@ -278,16 +291,15 @@ pub fn value(input: TokenStream) -> TokenStream {
     let peek = if flags & GENERATE_PEEK != 0 {
         quote! {
             impl duktape::PeekValue for #ident {
-                fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
+                fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, duktape::value::PeekError> {
                     ctx.get_object(idx);
                     #(
-                        if !ctx.get_prop(idx, #field_names_str) {
-                            return None;
+                        if !ctx.get_prop_bytes(idx, #prop_names_str) {
+                            return Err(duktape::value::PeekError::Prop(#field_names_str));
                         }
                         let #field_names = #fields_peek?;
-                        ctx.pop();
                     )*
-                    Some(Self {
+                    Ok(Self {
                         #( # field_names ),*
                     })
                 }
@@ -296,7 +308,7 @@ pub fn value(input: TokenStream) -> TokenStream {
     } else {
         quote!()
     };
-    let res = quote!( #peek #push #ser );
+    let res = quote!( #peek #push #ser #register_all_methods );
     //println!(">>> {}", res);
     res.into()
 }

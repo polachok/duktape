@@ -11,6 +11,8 @@ pub mod value;
 pub enum Error {
     #[error("{}", .0)]
     Message(String),
+    #[error("{}", .0)]
+    Peek(#[source] value::PeekError),
 }
 
 type CFunction = unsafe extern "C" fn(*mut duktape_sys::duk_context) -> i32;
@@ -103,7 +105,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn peek<T: PeekValue>(&mut self, idx: i32) -> Option<T> {
+    pub fn peek<T: PeekValue>(&mut self, idx: i32) -> Result<T, value::PeekError> {
         T::peek_at(self, idx)
     }
 
@@ -212,7 +214,7 @@ impl Context {
             let str = std::str::from_utf8(slice).unwrap();
             return Err(Error::Message(str.to_owned()));
         } else {
-            self.peek(-1).ok_or(Error::Message("failed to peek".into()))
+            self.peek(-1).map_err(Error::Peek)
         }
     }
 
@@ -222,11 +224,11 @@ impl Context {
         }
     }
 
-    pub fn pop(&mut self) {
-        self.pop_value::<()>();
+    pub fn pop(&mut self) -> Result<(), Error> {
+        self.pop_value::<()>().map_err(Error::Peek)
     }
 
-    pub fn pop_value<T: PeekValue>(&mut self) -> Option<T> {
+    pub fn pop_value<T: PeekValue>(&mut self) -> Result<T, value::PeekError> {
         T::pop(self)
     }
 
@@ -325,6 +327,17 @@ impl Context {
     }
 
     pub fn get_prop(&mut self, idx: duktape_sys::duk_idx_t, name: &str) -> bool {
+        unsafe {
+            duktape_sys::duk_get_prop_lstring(
+                self.inner,
+                idx,
+                name.as_ptr() as *const i8,
+                name.len() as u64,
+            ) > 0
+        }
+    }
+
+    pub fn get_prop_bytes(&mut self, idx: duktape_sys::duk_idx_t, name: &[u8]) -> bool {
         unsafe {
             duktape_sys::duk_get_prop_lstring(
                 self.inner,
@@ -460,7 +473,7 @@ mod tests {
         ctx.register_function("print", Print);
         let s = ctx.eval::<String>("print('hello', 1, 2);").unwrap();
         assert_eq!(s, "hello,1,2");
-        ctx.pop();
+        ctx.pop_it();
     }
 
     #[test]

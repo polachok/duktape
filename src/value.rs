@@ -1,22 +1,31 @@
 use crate::serialize;
 use crate::Context;
 use std::rc::Rc;
+use thiserror::Error;
 
 use serde::{Deserialize, Serialize};
+
+#[derive(Error, Debug)]
+pub enum PeekError {
+    #[error("failed to get prop {}", .0)]
+    Prop(&'static str),
+    #[error("failed to deserialize")]
+    Deserialize(#[from] serialize::Error),
+    #[error("internal")]
+    Internal,
+}
 
 pub trait PushValue {
     fn push_to(self, ctx: &mut Context) -> u32;
 }
 
 pub trait PeekValue: Sized {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self>;
+    fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, PeekError>;
 
-    fn pop(ctx: &mut Context) -> Option<Self> {
-        let this = Self::peek_at(ctx, -1);
-        if this.is_some() {
-            ctx.pop_it();
-        }
-        this
+    fn pop(ctx: &mut Context) -> Result<Self, PeekError> {
+        let this = Self::peek_at(ctx, -1)?;
+        ctx.pop_it();
+        Ok(this)
     }
 }
 
@@ -38,9 +47,10 @@ impl<'de, T> PeekValue for SerdeValue<T>
 where
     T: Deserialize<'de>,
 {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
+    fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, PeekError> {
         let mut deserializer = serialize::DuktapeDeserializer::from_ctx(ctx, idx);
-        Self::deserialize(&mut deserializer).ok() // TODO
+        let this = Self::deserialize(&mut deserializer)?;
+        Ok(this)
     }
 }
 
@@ -54,22 +64,22 @@ macro_rules! via_serde {
         }
 
         impl PeekValue for $t {
-            fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
-                let v: Option<SerdeValue<Self>> = SerdeValue::peek_at(ctx, idx);
-                v.map(|v| v.0)
+            fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, PeekError> {
+                let v: SerdeValue<Self> = SerdeValue::peek_at(ctx, idx)?;
+                Ok(v.0)
             }
         }
     };
 }
 
 impl PeekValue for () {
-    fn peek_at(_ctx: &mut Context, _idx: i32) -> Option<Self> {
-        Some(())
+    fn peek_at(_ctx: &mut Context, _idx: i32) -> Result<Self, PeekError> {
+        Ok(())
     }
 
-    fn pop(ctx: &mut Context) -> Option<Self> {
+    fn pop(ctx: &mut Context) -> Result<Self, PeekError> {
         ctx.pop_it();
-        Some(())
+        Ok(())
     }
 }
 
@@ -106,7 +116,7 @@ fn peek_rc<T>(ctx: &mut Context, idx: i32, copy: bool) -> Option<Rc<T>> {
         return None;
     }
     let typ = ctx.get_string(-1);
-    ctx.pop();
+    ctx.pop_it();
     if typ != std::any::type_name::<T>() {
         return None;
     }
@@ -115,7 +125,7 @@ fn peek_rc<T>(ctx: &mut Context, idx: i32, copy: bool) -> Option<Rc<T>> {
         return None;
     }
     let ptr = ctx.get_pointer(-1);
-    ctx.pop();
+    ctx.pop_it();
     if copy {
         // increment because we just produced a new Rc and 1 rc is left in stack
         unsafe { Rc::increment_strong_count(ptr) };
@@ -125,14 +135,15 @@ fn peek_rc<T>(ctx: &mut Context, idx: i32, copy: bool) -> Option<Rc<T>> {
 }
 
 impl<T> PeekValue for Rc<T> {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
-        peek_rc(ctx, idx, true)
+    fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, PeekError> {
+        let this = peek_rc(ctx, idx, true).ok_or(PeekError::Internal)?;
+        Ok(this)
     }
 
-    fn pop(ctx: &mut Context) -> Option<Self> {
-        let val = peek_rc(ctx, -1, false)?;
-        ctx.pop();
-        Some(val)
+    fn pop(ctx: &mut Context) -> Result<Self, PeekError> {
+        let val = peek_rc(ctx, -1, false).ok_or(PeekError::Internal)?;
+        ctx.pop_it();
+        Ok(val)
     }
 }
 
@@ -163,8 +174,11 @@ impl<T: PushValue> PushValue for Option<T> {
 }
 
 impl<T: PeekValue> PeekValue for Option<T> {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
-        Some(T::peek_at(ctx, idx))
+    fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, PeekError> {
+        if ctx.is_null_or_undefined(idx) {
+            return Ok(None);
+        }
+        T::peek_at(ctx, idx).map(Some)
     }
 }
 
@@ -172,8 +186,8 @@ impl<'de, T> PeekValue for Vec<T>
 where
     T: Deserialize<'de>,
 {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
-        let v: Option<_> = SerdeValue::peek_at(ctx, idx);
+    fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, PeekError> {
+        let v: Result<_, _> = SerdeValue::peek_at(ctx, idx);
         v.map(|v| v.0)
     }
 }
@@ -193,7 +207,7 @@ where
     T: Deserialize<'de>,
     [T; N]: Deserialize<'de>,
 {
-    fn peek_at(ctx: &mut Context, idx: i32) -> Option<Self> {
+    fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, PeekError> {
         SerdeValue::peek_at(ctx, idx).map(|v| v.0)
     }
 }

@@ -643,7 +643,7 @@ impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
             idx: 0,
         };
         let res = visitor.visit_seq(des)?;
-        self.inner.pop();
+        self.inner.pop_it();
         Ok(res)
     }
 
@@ -709,7 +709,7 @@ impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeArrayDeserializer<'ctx> {
             let mut deserializer = DuktapeDeserializer::from_ctx(&mut *self.ctx, -1);
             let val = seed.deserialize(&mut deserializer)?;
             self.idx += 1;
-            self.ctx.pop();
+            self.ctx.pop_it();
             return Ok(Some(val));
         }
         Ok(None)
@@ -736,7 +736,7 @@ impl<'de, 'ctx> serde::de::SeqAccess<'de> for DuktapeStructDeserializer<'ctx> {
             let mut deserializer = DuktapeDeserializer::from_ctx(&mut *self.ctx, -1);
             let val = seed.deserialize(&mut deserializer)?;
             self.idx += 1;
-            self.ctx.pop();
+            self.ctx.pop_it();
             return Ok(Some(val));
         }
         Ok(None)
