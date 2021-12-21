@@ -47,6 +47,16 @@ impl Context {
         }
     }
 
+    pub fn is_null_or_undefined(&mut self, idx: i32) -> bool {
+        use duktape_sys::{DUK_TYPE_MASK_NULL, DUK_TYPE_MASK_UNDEFINED};
+
+        unsafe {
+            duktape_sys::duk_get_type_mask(self.inner, idx)
+                & (DUK_TYPE_MASK_NULL | DUK_TYPE_MASK_UNDEFINED)
+                != 0
+        }
+    }
+
     pub fn push<T: PushValue>(&mut self, value: T) -> u32 {
         value.push_to(self)
     }
@@ -183,10 +193,9 @@ impl Context {
     }
 
     pub fn eval<T: PeekValue>(&mut self, value: &str) -> Result<T, Error> {
-        const DUK_COMPILE_EVAL: u32 = 1 << 3;
-        const DUK_COMPILE_SAFE: u32 = 1 << 7;
-        const DUK_COMPILE_NOSOURCE: u32 = 1 << 9;
-        const DUK_COMPILE_NOFILENAME: u32 = 1 << 11;
+        use duktape_sys::{
+            DUK_COMPILE_EVAL, DUK_COMPILE_NOFILENAME, DUK_COMPILE_NOSOURCE, DUK_COMPILE_SAFE,
+        };
 
         let rv = unsafe {
             duktape_sys::duk_eval_raw(
@@ -390,9 +399,7 @@ mod tests {
             panic!("{:?}", msg.to_str());
         }
         unsafe {
-            const DUK_COMPILE_EVAL: u32 = 1 << 3;
-            const DUK_COMPILE_NOSOURCE: u32 = 1 << 9;
-            const DUK_COMPILE_NOFILENAME: u32 = 1 << 11;
+            use duktape_sys::{DUK_COMPILE_EVAL, DUK_COMPILE_NOFILENAME, DUK_COMPILE_NOSOURCE};
 
             extern "C" fn print(ctx: *mut duktape_sys::duk_context) -> i32 {
                 let value = " ";

@@ -549,11 +549,15 @@ impl<'a, 'de, 'ctx> Deserializer<'de> for &'a mut DuktapeDeserializer<'ctx> {
         visitor.visit_byte_buf(bytes)
     }
 
-    fn deserialize_option<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        todo!("figure out how to check for null")
+        if self.inner.is_null_or_undefined(self.stack_idx) {
+            visitor.visit_none()
+        } else {
+            visitor.visit_some(self)
+        }
     }
 
     // In Serde, unit means an anonymous value containing no data.
