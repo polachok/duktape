@@ -4,8 +4,39 @@ use quote::quote;
 use syn::parse::Parse;
 use syn::{Ident, ItemFn};
 
+#[derive(Debug, Clone)]
+enum FieldId {
+    Name(Ident),
+    Index(u32),
+}
+
+impl FieldId {
+    fn field_name(&self) -> Ident {
+        match self {
+            FieldId::Name(ident) => ident.clone(),
+            FieldId::Index(i) => Ident::new(&format!("field_{}", i), Span::call_site()),
+        }
+    }
+}
+
+impl<'a> quote::ToTokens for FieldId {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let q = match self {
+            FieldId::Name(name) => quote!(#name),
+            FieldId::Index(idx) => {
+                let index = syn::Index {
+                    index: *idx,
+                    span: Span::call_site(),
+                };
+                quote!(#index)
+            }
+        };
+        tokens.extend(q);
+    }
+}
+
 struct FieldMeta {
-    name: Ident,
+    name: FieldId,
     ty: syn::Type,
     is_data: bool,
     is_hidden: bool,
@@ -13,8 +44,43 @@ struct FieldMeta {
 }
 
 impl FieldMeta {
+    fn from_field(field: &syn::Field, idx: usize) -> Self {
+        let mut serde_attrs = Vec::new();
+        let mut is_data = false;
+        let mut is_hidden = false;
+        for attr in &field.attrs {
+            if let Ok(meta) = attr.parse_meta() {
+                if let Some(ident) = meta.path().get_ident() {
+                    match ident.to_string().as_str() {
+                        "serde" => {
+                            serde_attrs.push(attr.clone());
+                        }
+                        "data" => {
+                            is_data = true;
+                        }
+                        "hidden" => {
+                            is_hidden = true;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        FieldMeta {
+            name: field
+                .ident
+                .clone()
+                .map(FieldId::Name)
+                .unwrap_or(FieldId::Index(idx as u32)),
+            ty: field.ty.clone(),
+            is_data,
+            is_hidden,
+            serde_attrs,
+        }
+    }
+
     fn prop_name(&self) -> proc_macro2::TokenStream {
-        let name = &self.name;
+        let name = &self.name.field_name();
         if self.is_hidden {
             let name = name.to_string();
             let mut buf = Vec::new();
@@ -38,7 +104,7 @@ impl<'a> quote::ToTokens for PushField<'a> {
         let prop_name = self.0.prop_name();
         let q = if self.0.is_data {
             let wrapper_name = Ident::new(
-                &format!("{}Wrapper", self.0.name.to_string()),
+                &format!("{}Wrapper", self.0.name.field_name().to_string()),
                 Span::call_site(),
             );
             let serde_attrs = &self.0.serde_attrs;
@@ -77,7 +143,7 @@ impl<'a> quote::ToTokens for PeekField<'a> {
         let ty = &self.0.ty;
         let q = if self.0.is_data {
             let wrapper_name = Ident::new(
-                &format!("{}Wrapper", self.0.name.to_string()),
+                &format!("{}Wrapper", self.0.name.field_name().to_string()),
                 Span::call_site(),
             );
             let serde_attrs = &self.0.serde_attrs;
@@ -117,39 +183,19 @@ pub fn value(input: TokenStream) -> TokenStream {
     };
     let mut fields_meta = Vec::new();
     match fields {
-        syn::Fields::Named(named_fields) => {
-            for field in named_fields.named {
-                let mut serde_attrs = Vec::new();
-                let mut is_data = false;
-                let mut is_hidden = false;
-                for attr in field.attrs {
-                    if let Ok(meta) = attr.parse_meta() {
-                        if let Some(ident) = meta.path().get_ident() {
-                            match ident.to_string().as_str() {
-                                "serde" => {
-                                    serde_attrs.push(attr);
-                                }
-                                "data" => {
-                                    is_data = true;
-                                }
-                                "hidden" => {
-                                    is_hidden = true;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-                fields_meta.push(FieldMeta {
-                    name: field.ident.expect("named field").clone(),
-                    ty: field.ty.clone(),
-                    is_data,
-                    is_hidden,
-                    serde_attrs,
-                });
+        syn::Fields::Named(fields) => {
+            for (i, field) in fields.named.iter().enumerate() {
+                let meta = FieldMeta::from_field(field, i);
+                fields_meta.push(meta);
             }
         }
-        _ => todo!("not (yet) supported"),
+        syn::Fields::Unnamed(fields) => {
+            for (i, field) in fields.unnamed.iter().enumerate() {
+                let meta = FieldMeta::from_field(field, i);
+                fields_meta.push(meta);
+            }
+        }
+        _ => todo!("nameless fields not (yet) supported"),
     }
 
     enum Option {
@@ -263,9 +309,13 @@ pub fn value(input: TokenStream) -> TokenStream {
     };
 
     let field_names: Vec<_> = fields_meta.iter().map(|meta| meta.name.clone()).collect();
+    let field_vars: Vec<_> = fields_meta
+        .iter()
+        .map(|meta| meta.name.field_name().clone())
+        .collect();
     let field_names_str: Vec<_> = fields_meta
         .iter()
-        .map(|meta| meta.name.to_string())
+        .map(|meta| meta.name.field_name().to_string())
         .collect();
     let prop_names_str: Vec<_> = fields_meta.iter().map(|meta| meta.prop_name()).collect();
     let fields_push: Vec<_> = fields_meta.iter().map(|meta| PushField(meta)).collect();
@@ -297,10 +347,10 @@ pub fn value(input: TokenStream) -> TokenStream {
                         if !ctx.get_prop_bytes(idx, #prop_names_str) {
                             return Err(duktape::value::PeekError::Prop(#field_names_str));
                         }
-                        let #field_names = #fields_peek?;
+                        let #field_vars = #fields_peek?;
                     )*
                     Ok(Self {
-                        #( # field_names ),*
+                        #( #field_names: #field_vars ),*
                     })
                 }
             }

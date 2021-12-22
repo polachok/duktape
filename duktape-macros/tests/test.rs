@@ -2,6 +2,33 @@ use duktape::Context;
 use duktape_macros::*;
 
 #[test]
+fn test_newtype() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[derive(Value)]
+    #[duktape(Peek, Push, Methods("toString", "toInt"))]
+    pub struct Obj {
+        x: u32,
+    }
+
+    impl Obj {
+        #[duktape(this = "Obj")]
+        fn to_int(&self) -> u32 {
+            self.x
+        }
+
+        #[duktape(this = "Obj")]
+        fn to_string(&self) -> String {
+            self.x.to_string()
+        }
+    }
+
+    #[derive(Value)]
+    struct ObjWrapper(Rc<RefCell<Obj>>);
+}
+
+#[test]
 fn test_methods() {
     use duktape::{PeekValue, PushValue};
     use std::rc::Rc;
@@ -28,7 +55,7 @@ fn test_methods() {
         t: Rc::new(Vec::new()),
     };
     let idx = obj.push_to(&mut ctx);
-    let obj = Obj::peek_at(&mut ctx, idx as i32).unwrap();
+    let _obj = Obj::peek_at(&mut ctx, idx as i32).unwrap();
 }
 
 #[test]
@@ -40,7 +67,6 @@ fn test_hidden() {
     }
 }
 
-/*
 #[test]
 fn ret_ref_array() {
     #[derive(Debug, serde::Deserialize, serde::Serialize, Value)]
@@ -201,4 +227,3 @@ fn adder() {
     let rv = ctx.peek::<u32>(-1).unwrap();
     assert_eq!(3, rv);
 }
-*/
