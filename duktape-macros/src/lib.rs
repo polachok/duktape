@@ -288,10 +288,8 @@ pub fn value(input: TokenStream) -> TokenStream {
         }
     });
     let register_all_methods = quote! {
-        impl #ident {
-            fn register_methods(ctx: &mut duktape::Context, idx: u32) {
-                #( #methods )*
-            }
+        fn register_methods(ctx: &mut duktape::Context, idx: u32) {
+            #( #methods )*
         }
     };
 
@@ -333,6 +331,8 @@ pub fn value(input: TokenStream) -> TokenStream {
                     Self::register_methods(ctx, idx);
                     idx
                 }
+
+                #register_all_methods
             }
         }
     } else {
@@ -358,7 +358,7 @@ pub fn value(input: TokenStream) -> TokenStream {
     } else {
         quote!()
     };
-    let res = quote!( #peek #push #ser #register_all_methods );
+    let res = quote!( #peek #push #ser );
     //println!(">>> {}", res);
     res.into()
 }

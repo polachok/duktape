@@ -17,6 +17,7 @@ pub enum PeekError {
 
 pub trait PushValue {
     fn push_to(self, ctx: &mut Context) -> u32;
+    fn register_methods(_ctx: &mut Context, _idx: u32) {}
 }
 
 pub trait PeekValue: Sized {
