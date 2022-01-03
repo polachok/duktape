@@ -511,7 +511,8 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
                 pub unsafe extern "C" fn #fn_name(raw: *mut ::duktape_sys::duk_context) -> i32 {
                     #parsed
 
-                    let ctx = &mut duktape::Context::from_raw(raw);
+                    // prevent drop
+                    let ctx = &mut std::mem::ManuallyDrop::new(duktape::Context::from_raw(raw));
                     let n = ctx.stack_len();
                     if n < #raw_args_count {
                         return -1;
