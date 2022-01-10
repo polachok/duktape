@@ -63,6 +63,8 @@ use std::ffi::CStr;
 use thiserror::Error;
 
 pub use duktape_macros::{duktape, Value};
+#[doc(hidden)]
+pub use duktape_sys as sys;
 pub use value::{PeekValue, PushValue};
 
 pub mod serialize;
