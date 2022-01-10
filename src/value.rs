@@ -163,14 +163,13 @@ fn test_rc() {
 
 impl<T: PushValue> PushValue for Option<T> {
     fn push_to(self, ctx: &mut Context) -> u32 {
-        let idx = match self {
+        match self {
             Some(v) => v.push_to(ctx),
             None => {
                 ctx.push_undefined();
                 ctx.stack_top()
             }
-        };
-        idx
+        }
     }
 }
 
@@ -218,8 +217,7 @@ where
     T: Serialize,
 {
     fn push_to(self, ctx: &mut Context) -> u32 {
-        let v = SerdeValue(&self);
-        v.push_to(ctx)
+        SerdeValue(&self).push_to(ctx)
     }
 }
 
@@ -228,7 +226,6 @@ where
     T: Serialize,
 {
     fn push_to(self, ctx: &mut Context) -> u32 {
-        let v = SerdeValue(self);
-        v.push_to(ctx)
+        SerdeValue(self).push_to(ctx)
     }
 }

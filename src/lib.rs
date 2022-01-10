@@ -29,6 +29,10 @@ pub struct Context {
 }
 
 impl Context {
+    /// # Safety
+    ///
+    /// This function should only be called with pointer received
+    /// by calling .as_raw() on a Context object
     pub unsafe fn from_raw(ctx: *mut duktape_sys::duk_context) -> Self {
         Context { inner: ctx }
     }
@@ -212,7 +216,7 @@ impl Context {
             let ptr = unsafe { duktape_sys::duk_safe_to_lstring(self.inner, -1, &mut len) };
             let slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
             let str = std::str::from_utf8(slice).unwrap();
-            return Err(Error::Message(str.to_owned()));
+            Err(Error::Message(str.to_owned()))
         } else {
             self.peek(-1).map_err(Error::Peek)
         }
@@ -357,7 +361,7 @@ impl Context {
         let buf_ptr = unsafe { duktape_sys::duk_require_buffer_data(self.inner, idx, &mut buf_len) }
             as *const u8;
         if buf_len == 0 {
-            return Vec::new();
+            Vec::new()
         } else {
             let slice = unsafe { std::slice::from_raw_parts(buf_ptr, buf_len as usize) };
             slice.to_vec()
@@ -368,8 +372,8 @@ impl Context {
         let mut buf_len = 0;
         let buf_ptr =
             unsafe { duktape_sys::duk_get_buffer_data(self.inner, idx, &mut buf_len) } as *const u8;
-        if buf_len == 0 || buf_ptr == std::ptr::null() {
-            return None;
+        if buf_len == 0 || buf_ptr.is_null() {
+            None
         } else {
             let slice = unsafe { std::slice::from_raw_parts(buf_ptr, buf_len as usize) };
             Some(slice.to_vec())
