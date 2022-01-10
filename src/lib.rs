@@ -398,6 +398,7 @@ impl Default for Context {
 impl Drop for Context {
     fn drop(&mut self) {
         unsafe { duktape_sys::duk_destroy_heap(self.inner) }
+        self.inner = std::ptr::null_mut();
     }
 }
 
