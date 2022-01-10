@@ -2,6 +2,9 @@
 name = "duktape-macros"
 version = "0.1.0"
 edition = "2021"
+description = "duktape bindings macros"
+license = "MIT"
+homepage = "https://github.com/polachok/duktape/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
@@ -15,6 +18,5 @@ inflections = "1.1"
 
 [dev-dependencies]
 duktape = { path = ".." }
-duktape-sys = { path = "../duktape-sys" }
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"

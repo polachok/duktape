@@ -502,13 +502,13 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
             impl duktape::Function for #struct_name {
                 const ARGS: i32 = #func_args_count;
 
-                fn ptr(&self) -> unsafe extern "C" fn(*mut ::duktape_sys::duk_context) -> i32 {
+                fn ptr(&self) -> unsafe extern "C" fn(*mut duktape::sys::duk_context) -> i32 {
                     Self::#fn_name
                 }
             }
 
             impl #struct_name {
-                pub unsafe extern "C" fn #fn_name(raw: *mut ::duktape_sys::duk_context) -> i32 {
+                pub unsafe extern "C" fn #fn_name(raw: *mut duktape::sys::duk_context) -> i32 {
                     #parsed
 
                     // prevent drop
@@ -552,13 +552,13 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
             impl duktape::Function for #struct_name {
                 const ARGS: i32 = #method_args_count;
 
-                fn ptr(&self) -> unsafe extern "C" fn(*mut ::duktape_sys::duk_context) -> i32 {
+                fn ptr(&self) -> unsafe extern "C" fn(*mut ::duktape::sys::duk_context) -> i32 {
                     Self::#fn_name
                 }
             }
 
             impl #struct_name {
-                pub unsafe extern "C" fn #fn_name(raw: *mut ::duktape_sys::duk_context) -> i32 {
+                pub unsafe extern "C" fn #fn_name(raw: *mut ::duktape::sys::duk_context) -> i32 {
                     // prevent drop
                     let ctx = &mut std::mem::ManuallyDrop::new(duktape::Context::from_raw(raw));
                     let n = ctx.stack_len();
