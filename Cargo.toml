@@ -1,15 +1,17 @@
 [package]
-name = "duktape"
+name = "dukt"
 version = "0.1.0"
 edition = "2021"
 description = "duktape bindings"
 license = "MIT"
 homepage = "https://github.com/polachok/duktape/"
+repository = "https://github.com/polachok/duktape/"
+keywords = ["javascript", "js", "duktape", "bindings"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-duktape-sys = { path = "./duktape-sys" }
-duktape-macros = { path = "./duktape-macros" }
+dukt-sys = "0.1"
+dukt-macros = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"

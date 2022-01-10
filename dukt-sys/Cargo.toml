@@ -1,10 +1,12 @@
 [package]
-name = "duktape-sys"
+name = "dukt-sys"
 version = "0.1.0"
 edition = "2021"
 description = "raw bindings for duktape"
 license = "MIT"
 homepage = "https://github.com/polachok/duktape/"
+repository = "https://github.com/polachok/duktape/"
+keywords = ["javascript", "js", "duktape", "bindings"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]

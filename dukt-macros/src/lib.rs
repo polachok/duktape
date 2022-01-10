@@ -115,10 +115,10 @@ impl<'a> quote::ToTokens for PushField<'a> {
                 #[derive(serde::Serialize, serde::Deserialize)]
                 struct #wrapper_name(#( #serde_attrs )* #ty);
 
-                impl duktape::PushValue for #wrapper_name {
-                    fn push_to(self, ctx: &mut duktape::Context) -> u32 {
+                impl dukt::PushValue for #wrapper_name {
+                    fn push_to(self, ctx: &mut dukt::Context) -> u32 {
                         use ::serde::Serialize;
-                        let mut serializer = duktape::serialize::DuktapeSerializer::from_ctx(ctx);
+                        let mut serializer = dukt::serialize::DuktapeSerializer::from_ctx(ctx);
                         self.serialize(&mut serializer).unwrap();
                         ctx.stack_top()
                     }
@@ -153,10 +153,10 @@ impl<'a> quote::ToTokens for PeekField<'a> {
                     #[derive(serde::Serialize, serde::Deserialize)]
                     struct #wrapper_name(#( #serde_attrs )* #ty);
 
-                    impl duktape::PeekValue for #wrapper_name {
-                        fn peek_at(ctx: &mut duktape::Context, idx: i32) -> Result<Self, duktape::value::PeekError> {
+                    impl dukt::PeekValue for #wrapper_name {
+                        fn peek_at(ctx: &mut dukt::Context, idx: i32) -> Result<Self, dukt::value::PeekError> {
                             use ::serde::Deserialize;
-                            let mut serializer = duktape::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
+                            let mut serializer = dukt::serialize::DuktapeDeserializer::from_ctx(ctx, idx);
                             Self::deserialize(&mut serializer).map_err(Into::into)
                         }
                     }
@@ -173,7 +173,7 @@ impl<'a> quote::ToTokens for PeekField<'a> {
     }
 }
 
-#[proc_macro_derive(Value, attributes(duktape, data, hidden))]
+#[proc_macro_derive(Value, attributes(dukt, data, hidden))]
 pub fn value(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let ident = input.ident.clone();
@@ -208,7 +208,7 @@ pub fn value(input: TokenStream) -> TokenStream {
         .iter()
         .filter(|attr| {
             if let Some(ident) = attr.path.get_ident() {
-                ident.to_string() == "duktape"
+                ident.to_string() == "dukt"
             } else {
                 false
             }
@@ -288,7 +288,7 @@ pub fn value(input: TokenStream) -> TokenStream {
         }
     });
     let register_all_methods = quote! {
-        fn register_methods(ctx: &mut duktape::Context, idx: u32) {
+        fn register_methods(ctx: &mut dukt::Context, idx: u32) {
             #( #methods )*
         }
     };
@@ -296,8 +296,8 @@ pub fn value(input: TokenStream) -> TokenStream {
     let ser = if flags & GENERATE_AS_SERIALIZE != 0 {
         quote! {
             impl #ident {
-                fn push_value<'a>(&'a self) -> impl duktape::value::PushValue + 'a {
-                    use duktape::value::SerdeValue;
+                fn push_value<'a>(&'a self) -> impl dukt::value::PushValue + 'a {
+                    use dukt::value::SerdeValue;
                     SerdeValue(self)
                 }
             }
@@ -321,8 +321,8 @@ pub fn value(input: TokenStream) -> TokenStream {
 
     let push = if flags & GENERATE_PUSH != 0 {
         quote! {
-            impl duktape::PushValue for #ident {
-                fn push_to(self, ctx: &mut duktape::Context) -> u32 {
+            impl dukt::PushValue for #ident {
+                fn push_to(self, ctx: &mut dukt::Context) -> u32 {
                     use std::convert::TryInto;
                     let idx = ctx.push_object();
                     #(
@@ -340,12 +340,12 @@ pub fn value(input: TokenStream) -> TokenStream {
     };
     let peek = if flags & GENERATE_PEEK != 0 {
         quote! {
-            impl duktape::PeekValue for #ident {
-                fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, duktape::value::PeekError> {
+            impl dukt::PeekValue for #ident {
+                fn peek_at(ctx: &mut Context, idx: i32) -> Result<Self, dukt::value::PeekError> {
                     ctx.get_object(idx);
                     #(
                         if !ctx.get_prop_bytes(idx, #prop_names_str) {
-                            return Err(duktape::value::PeekError::Prop(#field_names_str));
+                            return Err(dukt::value::PeekError::Prop(#field_names_str));
                         }
                         let #field_vars = #fields_peek?;
                     )*
@@ -410,7 +410,7 @@ impl Parse for Args {
 }
 
 #[proc_macro_attribute]
-pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn dukt(attr: TokenStream, input: TokenStream) -> TokenStream {
     let parsed_attr = syn::parse_macro_input!(attr as Args);
     //println!("attrs: {:?}", parsed_attr);
     let parsed: ItemFn = syn::parse_macro_input!(input);
@@ -483,7 +483,7 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
     let push_result = match return_type {
         Some(_) => {
             quote!(
-                use duktape::value::PushValue;
+                use dukt::value::PushValue;
                 result.push_to(ctx);
             )
         }
@@ -499,20 +499,20 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
         quote!(
             struct #struct_name;
 
-            impl duktape::Function for #struct_name {
+            impl dukt::Function for #struct_name {
                 const ARGS: i32 = #func_args_count;
 
-                fn ptr(&self) -> unsafe extern "C" fn(*mut duktape::sys::duk_context) -> i32 {
+                fn ptr(&self) -> unsafe extern "C" fn(*mut dukt::sys::duk_context) -> i32 {
                     Self::#fn_name
                 }
             }
 
             impl #struct_name {
-                pub unsafe extern "C" fn #fn_name(raw: *mut duktape::sys::duk_context) -> i32 {
+                pub unsafe extern "C" fn #fn_name(raw: *mut dukt::sys::duk_context) -> i32 {
                     #parsed
 
                     // prevent drop
-                    let ctx = &mut std::mem::ManuallyDrop::new(duktape::Context::from_raw(raw));
+                    let ctx = &mut std::mem::ManuallyDrop::new(dukt::Context::from_raw(raw));
                     let n = ctx.stack_len();
                     if n < #raw_args_count {
                         return -1;
@@ -545,22 +545,22 @@ pub fn duktape(attr: TokenStream, input: TokenStream) -> TokenStream {
 
         #parsed
 
-        pub fn #register_fn(ctx: &mut duktape::Context, idx: u32, name: &str) {
+        pub fn #register_fn(ctx: &mut dukt::Context, idx: u32, name: &str) {
             use ::std::convert::TryInto;
             struct #struct_name;
 
-            impl duktape::Function for #struct_name {
+            impl dukt::Function for #struct_name {
                 const ARGS: i32 = #method_args_count;
 
-                fn ptr(&self) -> unsafe extern "C" fn(*mut ::duktape::sys::duk_context) -> i32 {
+                fn ptr(&self) -> unsafe extern "C" fn(*mut ::dukt::sys::duk_context) -> i32 {
                     Self::#fn_name
                 }
             }
 
             impl #struct_name {
-                pub unsafe extern "C" fn #fn_name(raw: *mut ::duktape::sys::duk_context) -> i32 {
+                pub unsafe extern "C" fn #fn_name(raw: *mut ::dukt::sys::duk_context) -> i32 {
                     // prevent drop
-                    let ctx = &mut std::mem::ManuallyDrop::new(duktape::Context::from_raw(raw));
+                    let ctx = &mut std::mem::ManuallyDrop::new(dukt::Context::from_raw(raw));
                     let n = ctx.stack_len();
                     if n < #method_args_count {
                         return -1;
