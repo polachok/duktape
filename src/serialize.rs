@@ -85,12 +85,12 @@ impl<'a, 'ctx> Serializer for &'a mut DuktapeSerializer<'ctx> {
     }
 
     fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
-        self.ctx.push_int(v.into());
+        self.ctx.push_int(v);
         Ok(())
     }
 
     fn serialize_u32(self, v: u32) -> Result<Self::Ok> {
-        self.ctx.push_uint(v.into());
+        self.ctx.push_uint(v);
         Ok(())
     }
 
