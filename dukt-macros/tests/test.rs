@@ -1,3 +1,4 @@
+/*
 use duktape::Context;
 use duktape_macros::*;
 
@@ -227,3 +228,4 @@ fn adder() {
     let rv = ctx.peek::<u32>(-1).unwrap();
     assert_eq!(3, rv);
 }
+*/
